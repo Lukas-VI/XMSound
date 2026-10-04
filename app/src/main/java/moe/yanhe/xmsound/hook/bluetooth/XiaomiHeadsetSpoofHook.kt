@@ -3,9 +3,9 @@ package moe.yanhe.xmsound.hook.bluetooth
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.IBinder
 import java.lang.reflect.Method
+import moe.yanhe.xmsound.hook.HeadsetStateCache
 import moe.yanhe.xmsound.hook.HookLog
 import moe.yanhe.xmsound.hook.SafeHookContext
 import moe.yanhe.xmsound.hook.callMethod
@@ -184,6 +184,8 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
 
     private fun schedulePush(address: String?, delayMs: Long) {
         val handler = pushHandler ?: return
+        // Pull fresh state off the calling thread, then hand it to the UI shortly after.
+        HeadsetStateCache.refreshAsync()
         handler.postDelayed({ pushStatus(address) }, delayMs)
     }
 
@@ -196,19 +198,8 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
         val target = address ?: targetAddresses.firstOrNull() ?: return
         if (callbacks.isEmpty()) return
 
-        val context = serviceContext ?: return
-        val bundle = runCatching {
-            context.contentResolver.call(
-                Uri.parse("content://$STATE_AUTHORITY"),
-                METHOD_STATE,
-                null,
-                null,
-            )
-        }.getOrElse {
-            HookLog.w(tag, "state query failed: ${it.javaClass.simpleName}: ${it.message}")
-            return
-        } ?: run {
-            HookLog.w(tag, "state query returned null")
+        val bundle = queryHeadsetState() ?: run {
+            HookLog.w(tag, "no state snapshot yet")
             return
         }
 

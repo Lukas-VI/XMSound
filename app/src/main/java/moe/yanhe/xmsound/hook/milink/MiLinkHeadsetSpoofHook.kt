@@ -2,6 +2,7 @@ package moe.yanhe.xmsound.hook.milink
 
 import android.bluetooth.BluetoothDevice
 import android.content.Intent
+import moe.yanhe.xmsound.hook.HeadsetStateCache
 import moe.yanhe.xmsound.hook.HookLog
 import moe.yanhe.xmsound.hook.SafeHookContext
 import moe.yanhe.xmsound.hook.callMethod
@@ -51,6 +52,7 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
 
     override fun onHook() {
         notifyHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        HeadsetStateCache.start()
         MX_CLASSES.forEach { className ->
             hookDeviceResult(className, "checkIsMiTWS") { 1 }
             hookDeviceResult(className, "getDeviceId") { FAKE_DEVICE_ID }
@@ -219,6 +221,9 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
      */
     private fun schedulePropertyNotify() {
         val handler = notifyHandler ?: return
+        // Ask for fresh state off the calling thread: this may run on the UI thread, and the
+        // refresh is a binder round trip.
+        HeadsetStateCache.refreshAsync()
         // Give the SPP session time to apply the change, so the re-read returns the new value.
         handler.postDelayed({
             notifyPropertyChange(8)
