@@ -7,6 +7,7 @@ import moe.yanhe.xmsound.hook.bluetooth.MiuiHeadsetBinderProbe
 import moe.yanhe.xmsound.hook.bluetooth.XiaomiHeadsetSpoofHook
 import moe.yanhe.xmsound.hook.milink.MiLinkHeadsetProbe
 import moe.yanhe.xmsound.hook.milink.MiLinkHeadsetSpoofHook
+import moe.yanhe.xmsound.hook.settings.SettingsToastProbe
 
 /**
  * Registration table for the hook layer.
@@ -32,6 +33,7 @@ object HookRegistry {
                 add(MiLinkHeadsetSpoofHook())
                 if (probeEnabled) add(MiLinkHeadsetProbe())
             }
+            "com.android.settings" -> add(SettingsToastProbe())
         }
     }
 }

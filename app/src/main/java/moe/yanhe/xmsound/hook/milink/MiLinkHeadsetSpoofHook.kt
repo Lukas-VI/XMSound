@@ -5,6 +5,7 @@ import android.content.Intent
 import moe.yanhe.xmsound.hook.HookLog
 import moe.yanhe.xmsound.hook.SafeHookContext
 import moe.yanhe.xmsound.hook.callMethod
+import moe.yanhe.xmsound.hook.getObjectField
 
 /**
  * Makes MiLink - the Fusion Device Center's runtime - report the WF-1000XM5 as a live headset.
@@ -35,7 +36,21 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
 
     private val targetAddresses = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
+    /**
+     * The controller whose UI listener has to be poked after a change. HyperOS does not re-read
+     * `getAncState` on its own - without this the buttons work but the highlight never moves.
+     */
+    @Volatile
+    private var lastController: Any? = null
+
+    @Volatile
+    private var lastDevice: BluetoothDevice? = null
+
+    @Volatile
+    private var notifyHandler: android.os.Handler? = null
+
     override fun onHook() {
+        notifyHandler = android.os.Handler(android.os.Looper.getMainLooper())
         MX_CLASSES.forEach { className ->
             hookDeviceResult(className, "checkIsMiTWS") { 1 }
             hookDeviceResult(className, "getDeviceId") { FAKE_DEVICE_ID }
@@ -113,6 +128,8 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
             hookAfter(method) {
                 val device = args.getOrNull(0) as? BluetoothDevice ?: return@hookAfter
                 if (!isTargetDevice(device)) return@hookAfter
+                if (instance != null) lastController = instance
+                lastDevice = device
                 result = value()
             }
         }
@@ -148,10 +165,13 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
             hookBefore(method) {
                 val device = args.getOrNull(0) as? BluetoothDevice
                 if (!isTargetDevice(device)) return@hookBefore
+                if (instance != null) lastController = instance
+                lastDevice = device
                 HookLog.i(tag, "$methodName(${device?.address}) -> sony mode $sonyMode")
                 forwardMode(sonyMode)
                 // MiLink expects the resulting state back, so the UI switches immediately.
                 result = miuiState
+                schedulePropertyNotify()
             }
         }
     }
@@ -169,10 +189,13 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
                 val device = args.getOrNull(0) as? BluetoothDevice
                 val miuiMode = args.getOrNull(1) as? Int
                 if (!isTargetDevice(device)) return@hookBefore
+                if (instance != null) lastController = instance
+                lastDevice = device
                 val sony = sonyModeFor(miuiMode)
                 HookLog.i(tag, "setAncStateBlock miui=$miuiMode -> sony=$sony device=${device?.address}")
                 sony?.let { forwardMode(it) }
                 result = ancState()
+                if (sony != null) schedulePropertyNotify()
             }
         }
     }
@@ -187,8 +210,40 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
         else -> null
     }
 
-    private fun forwardMode(sonyMode: Int) {
-        val name = when (sonyMode) {
+    /**
+     * Tell the UI a property changed.
+     *
+     * HyperOS caches the noise-control state and will not re-read `getAncState` on its own, so the
+     * highlight only moves once `headsetPropertyChangeListener` is invoked. `updateType` follows the
+     * reference implementation: 8 = noise control, 4 = battery / general state.
+     */
+    private fun schedulePropertyNotify() {
+        val handler = notifyHandler ?: return
+        // Give the SPP session time to apply the change, so the re-read returns the new value.
+        handler.postDelayed({
+            notifyPropertyChange(8)
+            notifyPropertyChange(4)
+        }, NOTIFY_DELAY_MS)
+    }
+
+    private fun notifyPropertyChange(updateType: Int) {
+        val controller = lastController
+        val device = lastDevice
+        if (controller == null || device == null) {
+            HookLog.w(tag, "no controller captured yet, cannot notify type=$updateType")
+            return
+        }
+        val listener = runCatching { getObjectField(controller, "headsetPropertyChangeListener") }.getOrNull()
+        if (listener == null) {
+            HookLog.w(tag, "headsetPropertyChangeListener missing on ${controller.javaClass.name}")
+            return
+        }
+        runCatching { callMethod(listener, "invoke", device, updateType) }
+            .onSuccess { HookLog.i(tag, "notified property change type=$updateType") }
+            .onFailure { HookLog.w(tag, "notify type=$updateType failed: ${it.message}") }
+    }
+
+    private fun forwardMode(sonyMode: Int) {        val name = when (sonyMode) {
             SonyAnc.OFF -> "off"
             SonyAnc.NOISE_CANCELLING -> "nc"
             SonyAnc.AMBIENT -> "ambient"
@@ -271,5 +326,8 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
         const val KEY_RIGHT_CHARGING = "rightCharging"
         const val KEY_CASE_CHARGING = "caseCharging"
         const val KEY_ANC_STATE = "ancState"
+
+        /** Delay before poking the UI listener, to let the headset actually apply the change. */
+        const val NOTIFY_DELAY_MS = 1_200L
     }
 }
