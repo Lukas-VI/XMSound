@@ -1,23 +1,33 @@
 package moe.yanhe.xmsound.hook.settings
 
+import android.content.Intent
 import android.widget.Toast
 import moe.yanhe.xmsound.hook.HookLog
 import moe.yanhe.xmsound.hook.SafeHookContext
 import moe.yanhe.xmsound.hook.getObjectField
 
 /**
- * Finds out why HyperOS' headset page refuses an action.
+ * Makes the Bluetooth settings page's noise-control buttons work, and explains refusals.
  *
- * The noise-control buttons on the Bluetooth settings page answer with
- * "请连接并佩戴耳机" (connect and wear the earbuds) even though the Fusion Device Center accepts
- * the same commands. The message is a resource string, so its call site cannot be found by name.
+ * The page has its own precondition that the Fusion Device Center does not:
  *
- * Hooking `Toast.show` and printing the stack trace pinpoints the exact method that makes the
- * decision, which is far quicker than guessing. Read-only apart from the log.
+ * ```
+ * MiuiHeadsetFragment.updateAncMode(SourceFile:3801) -> ToastUtil.show("请连接并佩戴耳机")
+ * MiuiHeadsetFragment$24.onClick(SourceFile:3759)
+ * ```
+ *
+ * Everything the module spoofs is already in place there (`mDeviceId`, `mSupport`,
+ * `mSupportAnc=true`), but the check still refuses, and the deciding condition is inside an
+ * obfuscated line range. So instead of guessing it, the button is intercepted and handled the way
+ * the Device Center already does it: forward the mode to the headset, then let the status push
+ * refresh the page.
+ *
+ * The toast hook is kept because it is what pinpointed the method, and it stays useful when a new
+ * ROM moves the check.
  */
 class SettingsToastProbe : SafeHookContext() {
 
-    override val tag: String get() = "SettingsToast"
+    override val tag: String get() = "SettingsHeadset"
 
     override fun onHook() {
         install("Toast#show") {
@@ -33,6 +43,18 @@ class SettingsToastProbe : SafeHookContext() {
             }
         }
 
+        hookUpdateAncMode()
+
+        HookLog.i(tag, "settings headset hook installed in $packageName")
+    }
+
+    /**
+     * Replace `updateAncMode(int, boolean)` with our own handling.
+     *
+     * The original shows the refusal toast and gives up; skipping it means no toast is shown and the
+     * mode change goes to the headset instead.
+     */
+    private fun hookUpdateAncMode() {
         install("MiuiHeadsetFragment#updateAncMode") {
             val fragment = findClassOrNull(FRAGMENT) ?: run {
                 HookLog.w(tag, "MISSING $FRAGMENT")
@@ -43,36 +65,41 @@ class SettingsToastProbe : SafeHookContext() {
                 .forEach { method ->
                     method.isAccessible = true
                     hookBefore(method) {
-                        HookLog.i(
-                            tag,
-                            "updateAncMode(${method.parameterTypes.joinToString { it.simpleName }}) " +
-                                "args=${args.map { it?.toString() }}",
-                        )
-                        // The precondition that produces the toast reads these fields.
-                        instance?.let { dumpRelevantFields(it) }
+                        val mode = args.getOrNull(0) as? Int
+                        val fromUser = args.getOrNull(1) as? Boolean ?: false
+                        if (mode == null) return@hookBefore
+
+                        // Only user taps are ours to satisfy; internal calls keep working as-is.
+                        if (!fromUser) return@hookBefore
+
+                        HookLog.i(tag, "updateAncMode($mode, fromUser=$fromUser) -> handling it ourselves")
+                        forwardMode(mode)
+                        // Swallow the original, which is the code path that shows the toast.
+                        result = null
                     }
                 }
         }
-
-        HookLog.i(tag, "settings toast probe installed in $packageName")
     }
 
-    /** Print the fragment's own state, which is what the "connect and wear" check consults. */
-    private fun dumpRelevantFields(fragment: Any) {
-        var cls: Class<*>? = fragment.javaClass
-        var depth = 0
-        while (cls != null && depth < 3) {
-            cls.declaredFields
-                .filter { INTERESTING_FIELDS.any { token -> it.name.contains(token, ignoreCase = true) } }
-                .forEach { field ->
-                    runCatching {
-                        field.isAccessible = true
-                        HookLog.i(tag, "    field ${field.name} = ${field.get(fragment)}")
-                    }
-                }
-            cls = cls.superclass
-            depth++
+    /** The buttons use the same numbering as MiLink: 0 = off, 1 = noise cancelling, 2 = ambient. */
+    private fun forwardMode(mode: Int) {
+        val name = when (mode) {
+            MODE_OFF -> "off"
+            MODE_NC -> "nc"
+            MODE_AMBIENT -> "ambient"
+            else -> null
         }
+        if (name == null) {
+            HookLog.w(tag, "unknown ANC mode $mode, not forwarding")
+            return
+        }
+        val context = appContext() ?: return
+        runCatching {
+            context.sendBroadcast(
+                Intent(ACTION_SET_NOISE).setPackage(MODULE_PACKAGE).putExtra("mode", name),
+            )
+            HookLog.i(tag, "forwarded mode=$name")
+        }.onFailure { HookLog.w(tag, "forward failed: ${it.message}") }
     }
 
     /** AOSP keeps the text in `mText`; MIUI has used `mMessage` on some builds. */
@@ -88,11 +115,13 @@ class SettingsToastProbe : SafeHookContext() {
     private companion object {
         const val FRAGMENT = "com.android.settings.bluetooth.MiuiHeadsetFragment"
 
-        val INTERESTING = listOf("佩戴", "连接", "耳机", "wear", "connect")
+        const val MODULE_PACKAGE = "moe.yanhe.xmsound"
+        const val ACTION_SET_NOISE = "moe.yanhe.xmsound.action.SET_NOISE"
 
-        /** Field names worth printing: the ones a "is it connected and worn" check would use. */
-        val INTERESTING_FIELDS = listOf(
-            "device", "address", "wear", "anc", "mode", "connect", "support", "battery", "id",
-        )
+        const val MODE_OFF = 0
+        const val MODE_NC = 1
+        const val MODE_AMBIENT = 2
+
+        val INTERESTING = listOf("佩戴", "连接", "耳机", "wear", "connect")
     }
 }

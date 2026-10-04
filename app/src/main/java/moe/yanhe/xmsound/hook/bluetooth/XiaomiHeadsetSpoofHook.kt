@@ -106,6 +106,31 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
         hookAncMode(binderClass)
         hookAncLevel(binderClass)
         hookCallbackRegistration(binderClass)
+        startStateWatcher()
+    }
+
+    /**
+     * Push the status whenever it changes, rather than only in response to a call.
+     *
+     * HyperOS does not re-read the headset on its own, so a change made anywhere - the module UI,
+     * the Fusion Device Center, or the earbuds' own buttons - would otherwise leave every open page
+     * showing stale values.
+     */
+    private fun startStateWatcher() {
+        Thread({
+            var lastPayload: String? = null
+            while (true) {
+                runCatching {
+                    HeadsetStateCache.refresh()
+                    val payload = HeadsetStateCache.get()?.getString(KEY_PAYLOAD)
+                    if (payload != null && payload != lastPayload) {
+                        lastPayload = payload
+                        if (callbacks.isNotEmpty()) pushStatus(null)
+                    }
+                }
+                runCatching { Thread.sleep(STATE_WATCH_MS) }
+            }
+        }, "xmsound-headset-watch").apply { isDaemon = true }.start()
     }
 
     /**
@@ -414,6 +439,9 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
 
         /** Grace period for the SPP session to apply a command before the UI is refreshed. */
         const val PUSH_AFTER_COMMAND_MS = 900L
+
+        /** How often the status watcher looks for a change worth pushing to the UI. */
+        const val STATE_WATCH_MS = 1_000L
 
         const val ANC_MODE = "com.miui.headset.api.AncMode"
         const val ANC_STATE = "com.miui.headset.api.AncState"
