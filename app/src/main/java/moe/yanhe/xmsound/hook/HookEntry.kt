@@ -43,17 +43,7 @@ class HookEntry : XposedModule() {
         HookLog.module = this
         HookLog.i(TAG, "package loaded: ${param.packageName}")
 
-        val hooks = mutableListOf<HookContext>()
-
-        when (param.packageName) {
-            "com.android.bluetooth", "com.xiaomi.bluetooth" -> {
-                if (PROBE_ENABLED) hooks += ClassProbe()
-                // TODO: headset state dispatcher + HyperHeadsetService spoofing
-            }
-            "com.milink.service" -> {
-                // TODO: Fusion Device Center (融合设备中心) integration
-            }
-        }
+        val hooks = HookRegistry.hooksFor(param.packageName, PROBE_ENABLED)
 
         if (hooks.isEmpty()) return
 

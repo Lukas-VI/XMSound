@@ -39,8 +39,27 @@ XMSound 是一个 Xposed / LSPosed 模块，参照 [OppoPods](https://github.com
 - [x] **索尼 SPP 协议层：连接、握手、电量、降噪读写、固件 —— 已真机验证**
 - [x] 模块 UI（电量 / 降噪 / 协议日志）
 - [x] 自动重连（SPP 通道会被官方 App 抢占）
-- [ ] HyperOS Hook 集成层（蓝牙设置 / 融合设备中心 / 音量面板）
-- [ ] 超级岛 / 通知卡片
+- [x] **模块正常注入 LSPosed 目标进程（含运行时类探针与 MiLink 钩子）**
+- [ ] HyperOS 集成：机型识别（阻塞项）
+- [ ] HyperOS 集成：设备中心电量 / 降噪卡片
+- [ ] HyperOS 集成：设置页、超级岛、通知卡片
+
+> HyperOS 侧的实测 API 地图与落地计划见
+> [docs/hyperos-integration-plan.md](docs/hyperos-integration-plan.md)。
+> 结论摘要：**澎湃当前完全不认识 WF-1000XM5**（融合设备中心里没有它，
+> `HeadsetInfo` 的 getter 一次都不会被调用），因此集成必须先做「让系统接受这副耳机」，
+> 而不是简单注入数据。
+
+### 模块集成状态
+
+| 能力 | 状态 |
+| --- | --- |
+| LSPosed 注入 `com.android.bluetooth` | ✅ |
+| LSPosed 注入 `com.milink.service`（6 个进程） | ✅ |
+| 运行时类探针（12 个类的实测 API 面） | ✅ 输出见 [docs/captures/](docs/captures/) |
+| MiLink 耳机数据模型钩子（12 个 getter） | ✅ 安装成功，待机型识别打通后才有数据 |
+| 机型伪装 / 设备中心卡片 | ⬜ 未开始 |
+
 
 ### 真机验证状态
 
