@@ -28,6 +28,14 @@
     <string name="module">模块</string>
     <string name="module_scope_summary">在 LSPosed 中启用 XMSound 并勾选以下作用域，然后重启作用域。</string>
 
+    <!-- Notifications -->
+    <string name="notif_channel_headset">耳机状态</string>
+    <string name="notif_island">电量超级岛</string>
+    <string name="notif_island_summary">电量变化时弹出超级岛提示</string>
+    <string name="notif_card">通知卡片</string>
+    <string name="notif_card_summary">常驻显示电量与降噪控制按钮</string>
+    <string name="notif_permission_required">超级岛与通知卡片需要通知权限。</string>
+
     <!-- Device state -->
     <string name="waiting_for_pod">等待索尼 WF-1000XM5 连接…</string>
     <string name="select_device">选择蓝牙设备</string>

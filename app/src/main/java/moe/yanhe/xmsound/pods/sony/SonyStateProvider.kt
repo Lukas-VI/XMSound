@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
+import moe.yanhe.xmsound.ui.AppPrefs
 
 /**
  * Exposes the live headset state to the module's hook layer.
@@ -43,6 +44,15 @@ class SonyStateProvider : ContentProvider() {
         /** 0..20 ambient level, -1 when unknown. */
         const val KEY_AMBIENT_LEVEL = "ambientLevel"
 
+        /** Whether the hook process should raise the native connection popup. */
+        const val KEY_ISLAND_ENABLED = "islandEnabled"
+
+        /**
+         * Bumped whenever something asks for the popup explicitly. The hook process shows the
+         * popup when this changes, which makes the native surface testable on demand.
+         */
+        const val KEY_ISLAND_REQUEST = "islandRequest"
+
         fun uri(): Uri = Uri.parse("content://$AUTHORITY")
     }
 
@@ -70,6 +80,8 @@ class SonyStateProvider : ContentProvider() {
 
                     putInt(KEY_ANC_STATE, ancState(state.noise.mode))
                     putInt(KEY_AMBIENT_LEVEL, state.noise.ambientLevel)
+                    putBoolean(KEY_ISLAND_ENABLED, AppPrefs.islandEnabled(context))
+                    putInt(KEY_ISLAND_REQUEST, controller.islandRequestSeq)
                 }
             }
             METHOD_CONNECT -> {

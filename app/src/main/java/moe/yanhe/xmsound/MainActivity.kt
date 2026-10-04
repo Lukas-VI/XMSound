@@ -30,11 +30,14 @@ import moe.yanhe.xmsound.ui.XMSoundTheme
 class MainActivity : ComponentActivity() {
 
     companion object {
-        /** Runtime permissions required to discover and talk to the headset on API 31+. */
+        /** Runtime permissions required to discover, talk to, and report on the headset. */
         val REQUIRED_PERMISSIONS = buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 add(Manifest.permission.BLUETOOTH_CONNECT)
                 add(Manifest.permission.BLUETOOTH_SCAN)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
             }
         }.toTypedArray()
 

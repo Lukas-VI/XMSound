@@ -51,6 +51,8 @@
                 <action android:name="moe.yanhe.xmsound.action.SET_AMBIENT_LEVEL" />
                 <action android:name="moe.yanhe.xmsound.action.SET_FOCUS_ON_VOICE" />
                 <action android:name="moe.yanhe.xmsound.action.CYCLE_NOISE" />
+                <action android:name="moe.yanhe.xmsound.action.SHOW_ISLAND" />
+                <action android:name="moe.yanhe.xmsound.action.SHOW_CARD" />
             </intent-filter>
         </receiver>
 

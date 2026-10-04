@@ -8,6 +8,7 @@ import java.lang.reflect.Method
 import moe.yanhe.xmsound.hook.HeadsetStateCache
 import moe.yanhe.xmsound.hook.HookLog
 import moe.yanhe.xmsound.hook.SafeHookContext
+import moe.yanhe.xmsound.hook.bluetooth.strongtoast.MiuiStrongToast
 import moe.yanhe.xmsound.hook.callMethod
 
 /**
@@ -119,18 +120,57 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
     private fun startStateWatcher() {
         Thread({
             var lastPayload: String? = null
+            var lastPresence: String? = null
+            var lastIslandRequest = -1
             while (true) {
                 runCatching {
                     HeadsetStateCache.refresh()
-                    val payload = HeadsetStateCache.get()?.getString(KEY_PAYLOAD)
+                    val bundle = HeadsetStateCache.get() ?: return@runCatching
+                    val payload = bundle.getString(KEY_PAYLOAD)
+                    val islandRequest = bundle.getInt(KEY_ISLAND_REQUEST, 0)
+                    val explicitRequest = lastIslandRequest >= 0 && islandRequest != lastIslandRequest
+                    lastIslandRequest = islandRequest
+
                     if (payload != null && payload != lastPayload) {
                         lastPayload = payload
                         if (callbacks.isNotEmpty()) pushStatus(null)
+                    }
+
+                    // The popup is an announcement, not a readout: raise it when a bud appears or
+                    // disappears, plus whenever something explicitly asks for it.
+                    val presence = presenceOf(bundle)
+                    if (presence != lastPresence || explicitRequest) {
+                        lastPresence = presence
+                        if (bundle.getBoolean(KEY_ISLAND_ENABLED, false)) showStrongToast(bundle)
                     }
                 }
                 runCatching { Thread.sleep(STATE_WATCH_MS) }
             }
         }, "xmsound-headset-watch").apply { isDaemon = true }.start()
+    }
+
+    private fun presenceOf(bundle: android.os.Bundle): String =
+        "${bundle.getInt(KEY_LEFT, -1) >= 0}/${bundle.getInt(KEY_RIGHT, -1) >= 0}"
+
+    /**
+     * Raise the native connection popup plus its island form.
+     *
+     * Runs here because only this process holds the `STATUS_BAR` permission the call needs, and
+     * because the earphone animations are read from this package's own resources.
+     */
+    private fun showStrongToast(bundle: android.os.Bundle) {
+        val context = serviceContext ?: return
+        val left = bundle.getInt(KEY_LEFT, -1).takeIf { it in 0..100 }
+        val right = bundle.getInt(KEY_RIGHT, -1).takeIf { it in 0..100 }
+        if (left == null && right == null) return
+
+        MiuiStrongToast.showBattery(
+            context = context,
+            leftLevel = left,
+            leftCharging = bundle.getBoolean(KEY_LEFT_CHARGING, false),
+            rightLevel = right,
+            rightCharging = bundle.getBoolean(KEY_RIGHT_CHARGING, false),
+        )
     }
 
     /**
@@ -436,6 +476,12 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
         const val METHOD_STATE = "state"
         const val KEY_PAYLOAD = "payload"
         const val KEY_CONNECTED = "connected"
+        const val KEY_ISLAND_ENABLED = "islandEnabled"
+        const val KEY_ISLAND_REQUEST = "islandRequest"
+        const val KEY_LEFT = "left"
+        const val KEY_RIGHT = "right"
+        const val KEY_LEFT_CHARGING = "leftCharging"
+        const val KEY_RIGHT_CHARGING = "rightCharging"
 
         /** Grace period for the SPP session to apply a command before the UI is refreshed. */
         const val PUSH_AFTER_COMMAND_MS = 900L

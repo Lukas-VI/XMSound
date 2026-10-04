@@ -8,6 +8,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.CopyOnWriteArrayList
+import moe.yanhe.xmsound.ui.AppPrefs
 
 /** One line of the on-the-wire protocol log. */
 data class TrafficLine(
@@ -41,6 +42,9 @@ class SonyHeadsetController private constructor(private val context: Context) {
 
         /** Preferred target; the WF-1000XM5 is what this module is built for. */
         private const val PREFERRED_MODEL = "WF-1000XM5"
+
+        /** Logcat tag for the app-side session, readable with `adb logcat -s XMSound-App`. */
+        const val TAG = "XMSound-App"
 
         /**
          * The headset drops the SPP link when it is idle, and any other control app (Sony Sound
@@ -82,6 +86,19 @@ class SonyHeadsetController private constructor(private val context: Context) {
 
     @Volatile
     private var reconnectAttempts = 0
+
+    /**
+     * Incremented by [requestIsland]. The Bluetooth-process hook compares it against the value it
+     * last saw and raises the native popup when it changes, which is how the popup is triggered on
+     * demand (and tested).
+     */
+    @Volatile
+    var islandRequestSeq: Int = 0
+        private set
+
+    fun requestIsland() {
+        islandRequestSeq++
+    }
 
     private val reconnectRunnable = Runnable {
         if (!userRequestedDisconnect && !isConnected && session == null) connect()
@@ -180,6 +197,7 @@ class SonyHeadsetController private constructor(private val context: Context) {
         session?.disconnect()
         session = null
         state = state.copy(connected = false, protocolVersion = 0)
+        HeadsetNotificationCard.cancel(context)
         post { observers.forEach { it.onStateChanged(state) } }
     }
 
@@ -235,11 +253,34 @@ class SonyHeadsetController private constructor(private val context: Context) {
         setNoiseMode(next)
     }
 
+    // ------------------------------------------------------------ system surfaces
+
+    /**
+     * Mirror the state onto the module-owned HyperOS surface: the ongoing notification card.
+     *
+     * The island / connection popup is not shown from here - it is a strong toast driven from the
+     * Bluetooth process, which is the only place holding the `STATUS_BAR` permission.
+     */
+    private fun publishToSystem(state: SonyHeadsetState) {
+        runCatching {
+            val name = runCatching { selectedDevice?.name }.getOrNull()
+
+            if (AppPrefs.notificationCardEnabled(context) && state.connected) {
+                HeadsetNotificationCard.update(context, state, name)
+            } else {
+                HeadsetNotificationCard.cancel(context)
+            }
+        }.onFailure {
+            // Never let a notification problem break the session.
+        }
+    }
+
     // ------------------------------------------------------------ session plumbing
 
     private val sessionListener = object : SonyHeadsetSession.Listener {
         override fun onStateChanged(state: SonyHeadsetState) {
             this@SonyHeadsetController.state = state
+            publishToSystem(state)
             post { observers.forEach { it.onStateChanged(state) } }
         }
 

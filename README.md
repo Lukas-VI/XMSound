@@ -43,7 +43,8 @@ XMSound 是一个 Xposed / LSPosed 模块，参照 [OppoPods](https://github.com
 - [x] **机型伪装：澎湃原生耳机界面已为 XM5 打开**
 - [x] **系统级左右耳/盒电量 + 降噪状态显示（数据来自 SPP 协议层）**
 - [x] **系统内降噪控制（设置页与融合设备卡片均可切换，真机验证）**
-- [ ] 超级岛 / 通知卡片
+- [x] **通知卡片（常驻电量 + 降噪按钮）**
+- [x] **超级岛 / 原生连接弹窗（复用小米自己的耳机动画）**
 - [ ] 电池低电量提醒、更多机型
 
 > HyperOS 侧的实测 API 地图与落地计划见
@@ -63,6 +64,31 @@ WF-1000XM5
 ```
 
 **蓝牙设置页**（[截图](docs/captures/hyperos-settings-page-xm5.png)）同样显示三档电量与降噪控制。
+
+**超级岛**：连接/摘下时弹出小米原生大岛（`ShowOnceBigIsland`），
+带耳机动画与左右耳电量，5 秒后收起。
+
+### 关于超级岛的实现路线（重要）
+
+官方**焦点通知 API 走不通**：HyperOS 通过
+`com.xiaomi.xms.auth.IAuthService` **在线授权**焦点通知，
+未授权时 SystemUI 直接丢弃：
+
+```
+E FocusPlugin: onAuthFailed 0|moe.yanhe.xmsound|10010|...
+FocusPlugin: removeByKey 0|moe.yanhe.xmsound|10010|...
+```
+
+因此本模块改用 **MIUI strong toast**：`StatusBarManager.setStatus(1, "strong_toast_action", bundle)`，
+以 `com.xiaomi.bluetooth` 身份提交（该应用本身已获授权），并携带
+`island_param` + `notifyId=headset_wear_notification` 进入岛上。
+
+两个前提，都不需要打包任何素材：
+
+1. 必须在 `com.xiaomi.bluetooth` 进程内调用（`setStatus` 需要签名级 `STATUS_BAR` 权限）
+2. 动画直接从该应用自己的 `res/raw` 读取（`earphone_left_inear` → `earphone_left.mp4`），
+   拷到它的 filesDir 后以 `content://com.xiaomi.bluetooth.fileprovider/...` 交给 SystemUI
+
 
 一次真机验证的完整链路（设置页点击「关闭」）：
 

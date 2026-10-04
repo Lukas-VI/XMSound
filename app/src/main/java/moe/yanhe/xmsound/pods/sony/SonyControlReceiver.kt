@@ -27,6 +27,10 @@ class SonyControlReceiver : BroadcastReceiver() {
         const val ACTION_SET_FOCUS_ON_VOICE = "moe.yanhe.xmsound.action.SET_FOCUS_ON_VOICE"
         const val ACTION_CYCLE_NOISE = "moe.yanhe.xmsound.action.CYCLE_NOISE"
 
+        /** Re-post the system surfaces on demand; also the deterministic way to test them. */
+        const val ACTION_SHOW_ISLAND = "moe.yanhe.xmsound.action.SHOW_ISLAND"
+        const val ACTION_SHOW_CARD = "moe.yanhe.xmsound.action.SHOW_CARD"
+
         const val EXTRA_MODE = "mode"
         const val EXTRA_LEVEL = "level"
         const val EXTRA_ENABLED = "enabled"
@@ -65,6 +69,18 @@ class SonyControlReceiver : BroadcastReceiver() {
 
             ACTION_SET_FOCUS_ON_VOICE ->
                 controller.setFocusOnVoice(intent.getBooleanExtra(EXTRA_ENABLED, false))
+
+            ACTION_SHOW_ISLAND -> {
+                // The popup itself is raised by the Bluetooth-process hook, which holds the
+                // STATUS_BAR permission; this only asks for it.
+                controller.requestIsland()
+                Log.i(TAG, "island requested, state=${controller.state}")
+            }
+
+            ACTION_SHOW_CARD -> {
+                HeadsetNotificationCard.update(context, controller.state, controller.selectedDevice?.name)
+                Log.i(TAG, "manual card posted state=${controller.state}")
+            }
         }
     }
 }

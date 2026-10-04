@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -30,6 +31,8 @@ import moe.yanhe.xmsound.hook.HookModuleInfo
 fun SettingsPage(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var autoConnect by remember { mutableStateOf(AppPrefs.autoConnect(context)) }
+    var island by remember { mutableStateOf(AppPrefs.islandEnabled(context)) }
+    var card by remember { mutableStateOf(AppPrefs.notificationCardEnabled(context)) }
 
     Column(
         modifier = modifier
@@ -39,32 +42,63 @@ fun SettingsPage(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Card(Modifier.fillMaxWidth()) {
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.auto_connect),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = stringResource(R.string.auto_connect_summary),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                SwitchRow(
+                    title = stringResource(R.string.auto_connect),
+                    summary = stringResource(R.string.auto_connect_summary),
                     checked = autoConnect,
                     onCheckedChange = {
                         autoConnect = it
                         AppPrefs.setAutoConnect(context, it)
                     },
                 )
+                HorizontalDivider()
+                SwitchRow(
+                    title = stringResource(R.string.notif_island),
+                    summary = stringResource(R.string.notif_island_summary),
+                    checked = island,
+                    onCheckedChange = {
+                        island = it
+                        AppPrefs.setIslandEnabled(context, it)
+                    },
+                )
+                HorizontalDivider()
+                SwitchRow(
+                    title = stringResource(R.string.notif_card),
+                    summary = stringResource(R.string.notif_card_summary),
+                    checked = card,
+                    onCheckedChange = {
+                        card = it
+                        AppPrefs.setNotificationCardEnabled(context, it)
+                    },
+                )
             }
         }
 
         ModuleStatusCard()
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    summary: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

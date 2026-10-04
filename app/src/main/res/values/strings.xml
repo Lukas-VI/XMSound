@@ -28,6 +28,14 @@
     <string name="module">Module</string>
     <string name="module_scope_summary">Enable XMSound in LSPosed, tick these scopes, then restart them.</string>
 
+    <!-- Notifications -->
+    <string name="notif_channel_headset">Headset status</string>
+    <string name="notif_island">Battery island</string>
+    <string name="notif_island_summary">Show a Super Island popup when the battery changes</string>
+    <string name="notif_card">Notification card</string>
+    <string name="notif_card_summary">Keep a card with battery and noise-control buttons</string>
+    <string name="notif_permission_required">Notification permission is required for the battery island and the card.</string>
+
     <!-- Device state -->
     <string name="waiting_for_pod">Waiting for Sony WF-1000XM5 connection…</string>
     <string name="select_device">Select Bluetooth device</string>
