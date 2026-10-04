@@ -1,0 +1,10 @@
+# Normalise line endings so `gradlew` stays executable on Unix and Windows scripts keep CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.jar binary
+*.jks binary
+*.keystore binary
+*.png binary
+*.webp binary

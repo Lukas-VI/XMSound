@@ -1,0 +1,33 @@
+# Reference checkouts (upstream projects used for study only)
+/.reference/
+
+# Gradle / Android
+.gradle/
+build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# Signing material - never commit
+*.jks
+*.keystore
+keystore.properties
+
+# Logs / scratch
+*.log
+/logs/
+/tmp/
+/.tmp/
+*.hprof

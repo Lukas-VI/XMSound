@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <queries>
+        <package android:name="com.sony.songpal.mdr" />
+        <package android:name="com.android.settings" />
+    </queries>
+
+    <application
+        android:name=".XMSoundApp"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:enableOnBackInvokedCallback="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.XMSound">
+
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Intent-driven control surface. Used by the HyperOS hook layer (other processes) and by
+          `adb shell am broadcast` for hardware testing.
+        -->
+        <receiver
+            android:name=".pods.sony.SonyControlReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="moe.yanhe.xmsound.action.CONNECT" />
+                <action android:name="moe.yanhe.xmsound.action.DISCONNECT" />
+                <action android:name="moe.yanhe.xmsound.action.RECONNECT" />
+                <action android:name="moe.yanhe.xmsound.action.REFRESH" />
+                <action android:name="moe.yanhe.xmsound.action.SET_NOISE" />
+                <action android:name="moe.yanhe.xmsound.action.SET_AMBIENT_LEVEL" />
+                <action android:name="moe.yanhe.xmsound.action.SET_FOCUS_ON_VOICE" />
+                <action android:name="moe.yanhe.xmsound.action.CYCLE_NOISE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Set as Xposed Module -->
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+
+        <!-- Module description shown by the module manager -->
+        <meta-data
+            android:name="xposeddescription"
+            android:value="Sony WF-1000XM5 support for Xiaomi HyperOS." />
+
+        <!-- libxposed API version -->
+        <meta-data
+            android:name="xposedminversion"
+            android:value="101" />
+
+        <meta-data
+            android:name="xposedscope"
+            android:resource="@array/xposedscope" />
+    </application>
+
+</manifest>

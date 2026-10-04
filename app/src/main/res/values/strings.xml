@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">XMSound</string>
+    <string name="app_subtitle">Sony WF-1000XM5 for HyperOS</string>
+
+    <!-- Tabs -->
+    <string name="tab_earphones">Earphones</string>
+    <string name="tab_settings">Settings</string>
+    <string name="tab_debug">Log</string>
+    <string name="tab_about">About</string>
+
+    <!-- Connection state -->
+    <string name="conn_connected">Connected</string>
+    <string name="conn_disconnected">Not connected</string>
+    <string name="label_protocol">Protocol</string>
+    <string name="label_firmware">Firmware</string>
+    <string name="label_device">Device</string>
+    <string name="battery_title">Battery</string>
+    <string name="auto_connect">Auto connect</string>
+    <string name="auto_connect_summary">Connect automatically when the app opens</string>
+    <string name="protocol_v2">V2</string>
+    <string name="protocol_v1">V1</string>
+    <string name="protocol_unknown">—</string>
+    <string name="percent_format">%1$d%%</string>
+
+    <!-- Module -->
+    <string name="module">Module</string>
+    <string name="module_scope_summary">Enable XMSound in LSPosed, tick these scopes, then restart them.</string>
+
+    <!-- Device state -->
+    <string name="waiting_for_pod">Waiting for Sony WF-1000XM5 connection…</string>
+    <string name="select_device">Select Bluetooth device</string>
+    <string name="no_paired_devices">No bonded devices found</string>
+    <string name="bluetooth_disabled">Please turn on Bluetooth</string>
+    <string name="connecting">Connecting…</string>
+    <string name="connect_failed">Connection failed. Make sure the headset is on and nearby.</string>
+    <string name="retry">Retry</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="connect">Connect</string>
+    <string name="unknown_device">Unknown device</string>
+    <string name="bt_permission_required">Bluetooth permission is required to find the headset.</string>
+    <string name="grant_permission">Grant permission</string>
+
+    <!-- Battery -->
+    <string name="batt_left_pod">Left</string>
+    <string name="batt_right_pod">Right</string>
+    <string name="pod_case">Case</string>
+    <string name="battery_unknown">—</string>
+    <string name="battery_charging">Charging</string>
+
+    <!-- Noise control -->
+    <string name="noise_control_title">Noise control</string>
+    <string name="noise_control_off">Off</string>
+    <string name="noise_control_nc">Noise cancelling</string>
+    <string name="noise_control_ambient">Ambient sound</string>
+    <string name="ambient_level">Ambient level</string>
+    <string name="voice_passthrough">Focus on voice</string>
+    <string name="nc_off_summary">Noise cancelling and ambient sound are off</string>
+    <string name="nc_nc_summary">Block ambient noise</string>
+    <string name="nc_ambient_summary">Let ambient sound through</string>
+
+    <!-- Debug -->
+    <string name="debug_title">Protocol log</string>
+    <string name="debug_clear">Clear</string>
+    <string name="debug_copy">Copy</string>
+    <string name="debug_copied">Copied</string>
+    <string name="debug_empty">No traffic yet.</string>
+
+    <!-- About -->
+    <string name="about_title">About XMSound</string>
+    <string name="about_summary">System-level Sony WF-1000XM5 control for Xiaomi HyperOS.</string>
+    <string name="about_version">Version</string>
+    <string name="about_based_on">Inspired by</string>
+
+    <string name="enabled">On</string>
+    <string name="off">Off</string>
+    <string name="confirm">Confirm</string>
+    <string name="cancel">Cancel</string>
+</resources>

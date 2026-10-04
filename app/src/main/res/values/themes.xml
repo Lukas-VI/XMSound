@@ -1,0 +1,10 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      The activity draws everything with Compose; this theme only exists so that the window has no
+      framework action bar and follows the system light/dark setting instead of forcing light.
+    -->
+    <style name="Theme.XMSound" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

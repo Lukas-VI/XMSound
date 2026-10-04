@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Headband -->
+    <path
+        android:pathData="M26,56 A28,28 0 0,1 82,56"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Left cup -->
+    <path
+        android:pathData="M22,54 h10 a4,4 0 0,1 4,4 v14 a4,4 0 0,1 -4,4 h-10 a4,4 0 0,1 -4,-4 v-14 a4,4 0 0,1 4,-4 z"
+        android:fillColor="#FFFFFFFF" />
+
+    <!-- Right cup -->
+    <path
+        android:pathData="M72,54 h10 a4,4 0 0,1 4,4 v14 a4,4 0 0,1 -4,4 h-10 a4,4 0 0,1 -4,-4 v-14 a4,4 0 0,1 4,-4 z"
+        android:fillColor="#FFFFFFFF" />
+</vector>

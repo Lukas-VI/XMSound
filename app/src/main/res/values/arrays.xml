@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Packages the module hooks. Mirrors the scopes used by comparable HyperOS modules. -->
+    <string-array name="xposedscope">
+        <item>com.android.bluetooth</item>
+        <item>com.xiaomi.bluetooth</item>
+        <item>com.milink.service</item>
+        <item>com.android.settings</item>
+    </string-array>
+</resources>
