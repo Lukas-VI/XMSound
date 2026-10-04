@@ -29,6 +29,20 @@ class SonyStateProvider : ContentProvider() {
         const val KEY_CONNECTED = "connected"
         const val KEY_MODEL = "model"
 
+        /** Structured values, so hook processes do not have to parse the CSV. -1 means absent. */
+        const val KEY_LEFT = "left"
+        const val KEY_RIGHT = "right"
+        const val KEY_CASE = "case"
+        const val KEY_LEFT_CHARGING = "leftCharging"
+        const val KEY_RIGHT_CHARGING = "rightCharging"
+        const val KEY_CASE_CHARGING = "caseCharging"
+
+        /** 0 = off, 1 = noise cancelling, 2 = ambient sound (MiLink's convention). */
+        const val KEY_ANC_STATE = "ancState"
+
+        /** 0..20 ambient level, -1 when unknown. */
+        const val KEY_AMBIENT_LEVEL = "ambientLevel"
+
         fun uri(): Uri = Uri.parse("content://$AUTHORITY")
     }
 
@@ -46,6 +60,16 @@ class SonyStateProvider : ContentProvider() {
                     putString(KEY_ADDRESS, controller.selectedDevice?.address)
                     putBoolean(KEY_CONNECTED, state.connected)
                     putString(KEY_MODEL, "WF-1000XM5")
+
+                    putInt(KEY_LEFT, state.battery.left?.level ?: -1)
+                    putInt(KEY_RIGHT, state.battery.right?.level ?: -1)
+                    putInt(KEY_CASE, state.battery.case?.level ?: -1)
+                    putBoolean(KEY_LEFT_CHARGING, state.battery.left?.charging == true)
+                    putBoolean(KEY_RIGHT_CHARGING, state.battery.right?.charging == true)
+                    putBoolean(KEY_CASE_CHARGING, state.battery.case?.charging == true)
+
+                    putInt(KEY_ANC_STATE, ancState(state.noise.mode))
+                    putInt(KEY_AMBIENT_LEVEL, state.noise.ambientLevel)
                 }
             }
             METHOD_CONNECT -> {
@@ -54,6 +78,13 @@ class SonyStateProvider : ContentProvider() {
             }
             else -> super.call(method, arg, extras)
         }
+    }
+
+    private fun ancState(mode: SonyNoiseMode): Int = when (mode) {
+        SonyNoiseMode.OFF -> 0
+        SonyNoiseMode.NOISE_CANCELLING -> 1
+        SonyNoiseMode.AMBIENT_SOUND -> 2
+        SonyNoiseMode.UNKNOWN -> 0
     }
 
     override fun query(

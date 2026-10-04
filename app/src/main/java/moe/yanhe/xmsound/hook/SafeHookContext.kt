@@ -6,6 +6,7 @@ import moe.yanhe.xmsound.hook.bluetooth.HyperAdapterProbe
 import moe.yanhe.xmsound.hook.bluetooth.MiuiHeadsetBinderProbe
 import moe.yanhe.xmsound.hook.bluetooth.XiaomiHeadsetSpoofHook
 import moe.yanhe.xmsound.hook.milink.MiLinkHeadsetProbe
+import moe.yanhe.xmsound.hook.milink.MiLinkHeadsetSpoofHook
 
 /**
  * Registration table for the hook layer.
@@ -27,7 +28,10 @@ object HookRegistry {
                 add(XiaomiHeadsetSpoofHook())
                 add(MiuiHeadsetBinderProbe())
             }
-            "com.milink.service" -> add(MiLinkHeadsetProbe())
+            "com.milink.service" -> {
+                add(MiLinkHeadsetSpoofHook())
+                if (probeEnabled) add(MiLinkHeadsetProbe())
+            }
         }
     }
 }
@@ -83,4 +87,26 @@ abstract class SafeHookContext : HookContext() {
         }
         throw NoSuchMethodException("$className#$methodName")
     }
+
+    /**
+     * The hooked process's Application, used to reach our own process through the state provider.
+     * `ActivityThread.currentApplication()` is the only context available before any of the
+     * hooked objects have been seen.
+     */
+    protected fun appContext(): android.content.Context? =
+        runCatching {
+            Class.forName("android.app.ActivityThread")
+                .getMethod("currentApplication")
+                .invoke(null) as? android.content.Context
+        }.getOrNull()
+
+    /** Read the live headset state from the module's own process. */
+    protected fun queryHeadsetState(): android.os.Bundle? = runCatching {
+        appContext()?.contentResolver?.call(
+            android.net.Uri.parse("content://moe.yanhe.xmsound.state"),
+            "state",
+            null,
+            null,
+        )
+    }.getOrNull()
 }
