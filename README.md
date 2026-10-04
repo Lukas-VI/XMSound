@@ -65,6 +65,13 @@ WF-1000XM5
 
 **蓝牙设置页**（[截图](docs/captures/hyperos-settings-page-xm5.png)）同样显示三档电量与降噪控制。
 
+**通知卡片**（[截图](docs/captures/hyperos-notification-card-xm5.png)）：
+
+```
+WF-1000XM5
+左 79% · 右 79% · 耳机盒 30% · 降噪
+```
+
 **超级岛**：连接/摘下时弹出小米原生大岛（`ShowOnceBigIsland`），
 带耳机动画与左右耳电量，5 秒后收起。
 
