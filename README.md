@@ -46,18 +46,23 @@ XMSound 是一个 Xposed / LSPosed 模块，参照 [OppoPods](https://github.com
 
 > HyperOS 侧的实测 API 地图与落地计划见
 > [docs/hyperos-integration-plan.md](docs/hyperos-integration-plan.md)。
-> 结论摘要：**澎湃当前完全不认识 WF-1000XM5**（融合设备中心里没有它，
-> `HeadsetInfo` 的 getter 一次都不会被调用），因此集成必须先做「让系统接受这副耳机」，
-> 而不是简单注入数据。
+> 要点：蓝牙设置页**已经**显示 XM5 电量（88%，来自 HFP 电量指示）；
+> 缺的是**左右耳/盒细分**、**系统内降噪控制**与**融合设备中心卡片**。
+> 设置页会调用小米耳机 Binder `IMiuiHeadsetService` 查询 XM5，但拿到的是空值——
+> 那就是注入点，且不被机型识别阻塞。
 
 ### 模块集成状态
 
 | 能力 | 状态 |
 | --- | --- |
 | LSPosed 注入 `com.android.bluetooth` | ✅ |
+| LSPosed 注入 `com.xiaomi.bluetooth` | ✅ |
 | LSPosed 注入 `com.milink.service`（6 个进程） | ✅ |
-| 运行时类探针（12 个类的实测 API 面） | ✅ 输出见 [docs/captures/](docs/captures/) |
-| MiLink 耳机数据模型钩子（12 个 getter） | ✅ 安装成功，待机型识别打通后才有数据 |
+| 运行时类探针（实测 API 面） | ✅ 输出见 [docs/captures/](docs/captures/) |
+| 小米耳机 Binder 协议定位与解码 | ✅ `IMiuiHeadsetService`，opcode 1/14/16/19 |
+| 厂商识别链路 hook（`devicePropertyChangedCallback` 等） | ✅ 已抓到属性流 |
+| MiLink 耳机数据模型钩子（12 个 getter） | ✅ 安装成功，但该链路未被调用 |
+| Binder 应答改写（细分电量 / 降噪） | ⬜ 未开始 |
 | 机型伪装 / 设备中心卡片 | ⬜ 未开始 |
 
 
