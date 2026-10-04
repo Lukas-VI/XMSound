@@ -59,6 +59,9 @@ adb logcat -s XMSound-Sony     # 协议层
 
 ## 3. 关键结论：澎湃**完全不认识** WF-1000XM5
 
+> **⚠️ 本节已被第 3.5 节修正。** 初次结论（澎湃对 XM5 一无所知）只对了一半：融合设备中心里确实没有它，
+> 但设置页**已经会显示它的电量**。继续阅读前请先看 3.5。
+
 实测打开「融合设备中心」，其中只有手机本体与小米手环 7 Pro，**没有耳机**。
 同时 `MiLinkHeadsetProbe` 在 `com.milink.service` 里对
 `HeadsetInfo#getPowers/getMode/getName` 与 `HeadsetState#getBattery/getName`
@@ -67,9 +70,62 @@ adb logcat -s XMSound-Sony     # 协议层
 原因与之前的 APK 字符串扫描一致：`com.xiaomi.bluetooth`(BluetoothExtension) 的 DEX 中
 **不存在任何 Sony 相关字符串**，澎湃的耳机 UI 只对受支持的自有/合作型号生效。
 
-> **这是架构级结论**：本项目的集成方式**不是「把数据注入已有的耳机卡片」**，
-> 而是必须**先让澎湃把 XM5 认作受支持的小米耳机**（即 OppoPods 的机型伪装路线），
-> 之后电量与降噪才有地方显示。
+---
+
+## 3.5 修正：电量其实已经有了，缺的是「细分 + 降噪」
+
+打开**蓝牙设置页**截图可见：
+
+```
+WF-1000XM5 [LDAC]
+已连接 | 电量为 88% | 使用中
+```
+
+88% 正好等于协议层读到的**右耳**电量（同时 SPP 读到 L=93 R=88 case=30）。
+`dumpsys bluetooth_manager` 显示该设备 `isActiveHfpDevice=true`，且特性开关
+`enable_battery_level_update_only_through_hf_indicator` 为关闭状态 ——
+**澎湃是通过 HFP 电量指示（AT+IPHONEACCEV 一类）拿到这个单一数值的**，与我们的模块无关。
+
+因此本项目的实际价值定位应为：
+
+| 需求 | 现状 | 本项目要做的 |
+| --- | --- | --- |
+| 蓝牙设置页显示一个电量数字 | ✅ 系统已支持（HFP） | 无需处理 |
+| 左 / 右 / 耳机盒**分别**显示 | ❌ | 通过 Binder 注入 SPP 数据 |
+| 系统内**降噪控制**（关闭/降噪/环境声） | ❌ | 通过 Binder 注入 + 拦截设置 |
+| 融合设备中心耳机卡片 | ❌ | 需要机型识别（阶段 A） |
+| 超级岛 / 通知卡片 | ❌ | 阶段 D |
+
+### 3.6 已定位到可用的 Binder 注入点
+
+与 `HeadsetInfo`（从未被调用）不同，**设置页确实在为 XM5 查询小米耳机 Binder**：
+
+```
+onBind returned = com.android.bluetooth.ble.app.headset.v
+       descriptor = com.android.bluetooth.ble.app.IMiuiHeadsetService
+onTransact 声明于 com.android.bluetooth.ble.app.r1
+```
+
+进程为 `com.xiaomi.bluetooth`（独立进程），实现类
+`com.android.bluetooth.ble.app.headset.BluetoothHeadsetService`（208 方法，**已被 R8 混淆**，
+方法名形如 `A`/`A0`/`B1`/`C2`，**按方法名 hook 不可行**）。
+
+抓到的 AIDL 事务码（请求 + 应答）：
+
+| 事务码 | 请求参数 | 应答 | 推断 |
+| --- | --- | --- | --- |
+| 16 | — | `00 00 00 00`（int 0） | 全局查询（能力/版本） |
+| 1 | 设备地址 | 12 字节全 0 | 按地址查询设备信息 |
+| 14 | `1.4_1.83` + 地址 | 字符串 `"false"` | 能力/开关查询 |
+| 14 | `SettingsOriginal` + 地址 | `02 00 00 00 2c 00 20 00` | 设置来源相关查询 |
+| 19 | 设备地址 | — | 按地址查询 |
+
+**对 XM5 的查询返回的是空/`false`**，这就是要伪造的地方。
+原始抓包见 `captures/binder-protocol-imiuheadsetservice.txt`。
+
+> 结论：集成应走 **Binder 层（`onTransact`）**，而不是方法名 hook。
+> `Service.onBind` 与 `Binder.onTransact` 是框架名，跨版本稳定；
+> 实现类名 `headset.v` / Stub `r1` 是混淆产物，必须运行时动态获取（探针已实现）。
 
 ---
 
@@ -129,29 +185,30 @@ adb logcat -s XMSound-Sony     # 协议层
 
 ---
 
-## 5. 落地计划
+## 5. 落地计划（据第 3.5/3.6 节修正）
 
-按依赖顺序：
+### 阶段 B′：Binder 注入（当前最高价值，不再被机型识别阻塞）
+1. 在 `com.xiaomi.bluetooth` 中，用 `onBind` 拿到 `IMiuiHeadsetService` 的 Binder，
+   对 `onTransact` 装钩子（探针已实现该定位逻辑）。
+2. 补齐事务码语义：继续抓包覆盖「获取设备详情 / 获取电量 / 获取与设置降噪 /
+   注册与注销回调」等剩余 opcode（需要人工在设置页与设备中心多点几下）。
+3. 对 XM5 的地址，把事务码 1 / 14 / 19 的应答改写为真实数据
+   （左/右/盒电量、当前降噪模式），使设置页显示细分电量并出现降噪入口。
+4. 拦截「设置降噪」的事务码，转发到协议层的
+   `68 17 01 <on> <0=NC|1=AS> <focus> <level>`，并把回执拟造成成功。
 
-### 阶段 A：让澎湃认识 XM5（阻塞项，必须先做）
-1. 在 `com.android.bluetooth` 中 hook `HyperAdapterService.devicePropertyChangedCallback`，
-   观察 XM5 连接时到达的 `propTypes` / `values`（尤其 `BT_PROPERTY_VENDOR_PRODUCT_INFO_HYPER`）。
-2. 据此复用 `handleAirpodsInfo` 的识别路径，为 XM5 构造并注入一段能让澎湃接受的厂商产品信息。
-3. 参照 OppoPods 的 `DeviceModelRegistry` / `ConfigManager.DEFAULT_FAKE_DEVICE_ID`，
-   准备「伪装成某款受支持小米耳机」的方案作为兜底。
+### 阶段 A：融合设备中心卡片（仍需要机型识别）
+5. hook `HyperAdapterService.devicePropertyChangedCallback`，观察 XM5 连接时的
+   `propTypes` / `values`（已知 `0xF9` 仅索尼设备出现：XM5=`0x03`、PCM-A10=`0x01`；
+   `0xFD` = `BT_PROPERTY_VENDOR_PRODUCT_INFO_HYPER` 尚未出现）。
+6. 复用 `handleAirpodsInfo` 的识别路径，或参照 OppoPods 的
+   `ConfigManager.DEFAULT_FAKE_DEVICE_ID` 做机型伪装，让耳机出现在设备中心。
 
-### 阶段 B：接入真实数据
-4. 把协议层会话移入 `com.android.bluetooth` 进程（复用已连接的 ACL，避免第二个 SPP 客户端）。
-5. 用 `bas.BatteryService.handleBatteryChanged(BluetoothDevice, int)` 把 SPP 电量发布进系统栈。
-6. 在 `com.milink.service` 中校正 `HeadsetInfo#getPowers/getMode` 与
-   `HeadsetState#setBattery/setName`，使设备中心显示真值。
+### 阶段 C/D
+7. 超级岛（`MiuiHeadsetIslandParam`）、通知卡片、设置页深度集成。
 
-### 阶段 C：控制回传
-7. 拦截 `HeadsetControlAncItemView` / `HeadsetState#HeadsetModeChanged` 触发的降噪切换，
-   转发到协议层的 `68 17 01 <on> <0=NC|1=AS> <focus> <level>`。
-
-### 阶段 D：其余澎湃特性
-8. 设置页集成（`com.android.settings`）、超级岛、通知卡片。
+> **注意**：阶段 B′ 不再依赖阶段 A。设置页已经在为 XM5 调用 Binder，
+> 只要应答被改写，细分电量与降噪入口就能先落地。
 
 ---
 

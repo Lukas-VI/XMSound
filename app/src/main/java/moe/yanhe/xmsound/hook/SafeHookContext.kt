@@ -2,6 +2,8 @@ package moe.yanhe.xmsound.hook
 
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
+import moe.yanhe.xmsound.hook.bluetooth.HyperAdapterProbe
+import moe.yanhe.xmsound.hook.bluetooth.MiuiHeadsetBinderProbe
 import moe.yanhe.xmsound.hook.milink.MiLinkHeadsetProbe
 
 /**
@@ -19,6 +21,8 @@ object HookRegistry {
             }
         }
         when (packageName) {
+            "com.android.bluetooth" -> add(HyperAdapterProbe())
+            "com.xiaomi.bluetooth" -> add(MiuiHeadsetBinderProbe())
             "com.milink.service" -> add(MiLinkHeadsetProbe())
         }
     }
@@ -59,5 +63,20 @@ abstract class SafeHookContext : HookContext() {
             val method: Method = findMethod(className, methodName)
             hookAfter(method) { block(result) }
         }
+    }
+
+    /**
+     * Like [findMethod], but walks up the class hierarchy. Needed for framework methods a class
+     * merely inherits (`Service.onBind`, `Binder.onTransact`), which `getDeclaredMethod` misses.
+     */
+    protected fun findMethodAnywhere(className: String, methodName: String, vararg parameterTypes: Class<*>): Method {
+        var cls: Class<*>? = findClass(className)
+        while (cls != null) {
+            runCatching {
+                return cls.getDeclaredMethod(methodName, *parameterTypes).apply { isAccessible = true }
+            }
+            cls = cls.superclass
+        }
+        throw NoSuchMethodException("$className#$methodName")
     }
 }

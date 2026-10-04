@@ -37,38 +37,49 @@ class ClassProbe : HookContext() {
          * so anything reported MISSING has genuinely moved in this release - which is itself the
          * signal we need.
          */
+        /**
+         * Classes dumped in full, ignoring [NAME_FILTER]. Used for the primary integration target,
+         * where knowing every member matters more than keeping the log short.
+         */
+        private val FULL_DUMP = setOf(
+            "com.android.bluetooth.ble.app.headset.BluetoothHeadsetService",
+            "com.android.bluetooth.ble.app.MiuiHeadsetIslandParam",
+        )
+
         val TARGETS: Map<String, List<String>> = mapOf(
             "com.android.bluetooth" to listOf(
                 "com.android.bluetooth.btservice.HyperAdapterService",
                 "com.android.bluetooth.btservice.HyperAdapterService\$DeviceInfo",
                 "com.android.bluetooth.btservice.HyperAdapterService\$MiAbstractionLayer",
                 "com.android.bluetooth.hfp.HyperHeadsetService",
-                "com.android.bluetooth.hfp.HyperHeadsetStateMachine",
                 "com.android.bluetooth.bas.BatteryService",
-                "com.android.bluetooth.bas.BatteryStateMachine",
                 "com.android.bluetooth.a2dp.A2dpService",
+                // Also probed here: BluetoothExtension.apk declares this package, and it is not yet
+                // known which process ends up loading it.
+                "com.android.bluetooth.ble.app.headset.BluetoothHeadsetService",
+                "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub",
+                "com.android.bluetooth.ble.app.MiuiHeadsetInfo",
+            ),
+            // The Xiaomi headset Binder lives in BluetoothExtension.apk but declares the
+            // com.android.bluetooth.ble.app package, so it is loaded into the Bluetooth process.
+            "com.xiaomi.bluetooth" to listOf(
+                "com.android.bluetooth.ble.app.headset.BluetoothHeadsetService",
+                "com.android.bluetooth.ble.app.headset.plugin.BluetoothHeadsetServicePlugin",
+                "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub",
+                "com.android.bluetooth.ble.app.IMiuiHeadsetServicePlugin\$Stub",
+                "com.android.bluetooth.ble.app.MiuiHeadsetInfo",
+                "com.android.bluetooth.ble.app.MiuiHeadsetInfoV2",
+                "com.android.bluetooth.ble.app.MiuiHeadsetIslandParam",
+                "com.android.bluetooth.ble.app.MiuiHeadsetNotification",
             ),
             "com.milink.service" to listOf(
+                "com.miui.headset.runtime.AncBatteryController",
+                "com.miui.headset.runtime.AncBatteryModel",
                 "com.miui.headset.api.HeadsetInfo",
                 "com.miui.headset.api.AncState",
                 "com.miui.headset.api.AncMode",
-                "com.miui.headset.api.AudioEffectState",
-                "com.miui.headset.api.HeadsetType",
-                "com.miui.headset.api.HeadsetClient",
-                "com.miui.headset.api.HeadsetHost",
-                "com.miui.headset.api.HeadsetResult",
-                "com.miui.headset.api.IHeadsetLocalService\$Stub",
-                "com.miui.circulate.world.headset.HeadsetContentManager",
-                "com.miui.circulate.world.headset.data.HeadsetState",
-                "com.miui.circulate.api.protocol.headset.HeadsetDeviceInfo",
                 "com.miui.circulate.api.protocol.headset.HeadsetServiceClient",
-                "com.miui.circulate.api.service.CirculateServiceInfo",
-            ),
-            "com.xiaomi.bluetooth" to listOf(
-                "com.android.bluetooth.ble.app.MiuiBluetoothNotification",
-                "com.android.bluetooth.ble.app.MiuiBluetoothNotificationApi",
-                "com.android.bluetooth.ble.app.headset.BluetoothHeadsetService",
-                "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub",
+                "com.xiaomi.mxbluetoothsdk.service.MxBluetoothService",
             ),
         )
     }
@@ -90,8 +101,12 @@ class ClassProbe : HookContext() {
             return
         }
 
-        val methods = cls.declaredMethods.filter { matches(it.name) }.sortedBy { it.name }
-        val fields = cls.declaredFields.filter { matches(it.name) }.sortedBy { it.name }
+        val methods = cls.declaredMethods
+            .filter { FULL_DUMP.contains(className) || matches(it.name) }
+            .sortedBy { it.name }
+        val fields = cls.declaredFields
+            .filter { FULL_DUMP.contains(className) || matches(it.name) }
+            .sortedBy { it.name }
 
         HookLog.i(
             TAG,
