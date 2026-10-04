@@ -33,7 +33,46 @@ class SettingsToastProbe : SafeHookContext() {
             }
         }
 
+        install("MiuiHeadsetFragment#updateAncMode") {
+            val fragment = findClassOrNull(FRAGMENT) ?: run {
+                HookLog.w(tag, "MISSING $FRAGMENT")
+                return@install
+            }
+            fragment.declaredMethods
+                .filter { it.name == "updateAncMode" }
+                .forEach { method ->
+                    method.isAccessible = true
+                    hookBefore(method) {
+                        HookLog.i(
+                            tag,
+                            "updateAncMode(${method.parameterTypes.joinToString { it.simpleName }}) " +
+                                "args=${args.map { it?.toString() }}",
+                        )
+                        // The precondition that produces the toast reads these fields.
+                        instance?.let { dumpRelevantFields(it) }
+                    }
+                }
+        }
+
         HookLog.i(tag, "settings toast probe installed in $packageName")
+    }
+
+    /** Print the fragment's own state, which is what the "connect and wear" check consults. */
+    private fun dumpRelevantFields(fragment: Any) {
+        var cls: Class<*>? = fragment.javaClass
+        var depth = 0
+        while (cls != null && depth < 3) {
+            cls.declaredFields
+                .filter { INTERESTING_FIELDS.any { token -> it.name.contains(token, ignoreCase = true) } }
+                .forEach { field ->
+                    runCatching {
+                        field.isAccessible = true
+                        HookLog.i(tag, "    field ${field.name} = ${field.get(fragment)}")
+                    }
+                }
+            cls = cls.superclass
+            depth++
+        }
     }
 
     /** AOSP keeps the text in `mText`; MIUI has used `mMessage` on some builds. */
@@ -47,6 +86,13 @@ class SettingsToastProbe : SafeHookContext() {
     }
 
     private companion object {
+        const val FRAGMENT = "com.android.settings.bluetooth.MiuiHeadsetFragment"
+
         val INTERESTING = listOf("佩戴", "连接", "耳机", "wear", "connect")
+
+        /** Field names worth printing: the ones a "is it connected and worn" check would use. */
+        val INTERESTING_FIELDS = listOf(
+            "device", "address", "wear", "anc", "mode", "connect", "support", "battery", "id",
+        )
     }
 }

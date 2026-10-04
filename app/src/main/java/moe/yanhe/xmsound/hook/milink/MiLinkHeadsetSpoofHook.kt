@@ -50,6 +50,11 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
     @Volatile
     private var notifyHandler: android.os.Handler? = null
 
+    /** Runs the UI notification off the main thread so a slow listener cannot freeze the card. */
+    private val notifyExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "xmsound-notify").apply { isDaemon = true }
+    }
+
     override fun onHook() {
         notifyHandler = android.os.Handler(android.os.Looper.getMainLooper())
         HeadsetStateCache.start()
@@ -220,15 +225,16 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
      * reference implementation: 8 = noise control, 4 = battery / general state.
      */
     private fun schedulePropertyNotify() {
-        val handler = notifyHandler ?: return
         // Ask for fresh state off the calling thread: this may run on the UI thread, and the
         // refresh is a binder round trip.
         HeadsetStateCache.refreshAsync()
-        // Give the SPP session time to apply the change, so the re-read returns the new value.
-        handler.postDelayed({
+        // The listener re-renders the whole card, so it is invoked off the main thread with a
+        // delay long enough for the headset to have applied the change.
+        notifyExecutor.execute {
+            runCatching { Thread.sleep(NOTIFY_DELAY_MS) }
             notifyPropertyChange(8)
             notifyPropertyChange(4)
-        }, NOTIFY_DELAY_MS)
+        }
     }
 
     private fun notifyPropertyChange(updateType: Int) {
