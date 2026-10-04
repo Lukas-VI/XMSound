@@ -44,6 +44,10 @@ class ClassProbe : HookContext() {
         private val FULL_DUMP = setOf(
             "com.android.bluetooth.ble.app.headset.BluetoothHeadsetService",
             "com.android.bluetooth.ble.app.MiuiHeadsetIslandParam",
+            "com.android.bluetooth.ble.app.IMiuiHeadsetService",
+            "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub",
+            "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub\$Proxy",
+            "com.miui.headset.runtime.AncBatteryController",
         )
 
         val TARGETS: Map<String, List<String>> = mapOf(
@@ -80,6 +84,12 @@ class ClassProbe : HookContext() {
                 "com.miui.headset.api.AncMode",
                 "com.miui.circulate.api.protocol.headset.HeadsetServiceClient",
                 "com.xiaomi.mxbluetoothsdk.service.MxBluetoothService",
+                // The AIDL client for the Xiaomi headset Binder. Its method names name the
+                // operations, and each one funnels into BinderProxy.transact(code, ...).
+                "com.android.bluetooth.ble.app.IMiuiHeadsetService",
+                "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub",
+                "com.android.bluetooth.ble.app.IMiuiHeadsetService\$Stub\$Proxy",
+                "com.android.bluetooth.ble.app.IMiuiHeadsetCallback\$Stub\$Proxy",
             ),
         )
     }
@@ -120,7 +130,22 @@ class ClassProbe : HookContext() {
                 "  M ${m.returnType.simpleName} ${m.name}(${m.parameterTypes.joinToString(", ") { it.simpleName }})",
             )
         }
-        fields.forEach { f -> HookLog.i(TAG, "  F ${f.type.simpleName} ${f.name}") }
+        fields.forEach { f ->
+            // AIDL puts the opcodes in static final int fields (TRANSACTION_*). javac inlines
+            // uses of compile-time constants, so reading them back through reflection is the only
+            // way to learn the codes this ROM actually uses.
+            val value = runCatching {
+                if (java.lang.reflect.Modifier.isStatic(f.modifiers) &&
+                    f.type == Int::class.javaPrimitiveType
+                ) {
+                    f.isAccessible = true
+                    " = %d (0x%02X)".format(f.getInt(null), f.getInt(null))
+                } else {
+                    ""
+                }
+            }.getOrDefault("")
+            HookLog.i(TAG, "  F ${f.type.simpleName} ${f.name}$value")
+        }
     }
 
     private fun matches(name: String): Boolean {

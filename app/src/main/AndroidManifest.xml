@@ -54,6 +54,16 @@
             </intent-filter>
         </receiver>
 
+        <!--
+          Exposes the live headset state to the hook layer running inside the Bluetooth processes.
+          Guarded by BLUETOOTH_CONNECT, which com.android.bluetooth / com.xiaomi.bluetooth hold.
+        -->
+        <provider
+            android:name=".pods.sony.SonyStateProvider"
+            android:authorities="moe.yanhe.xmsound.state"
+            android:exported="true"
+            android:permission="android.permission.BLUETOOTH_CONNECT" />
+
         <!-- Set as Xposed Module -->
         <meta-data
             android:name="xposedmodule"

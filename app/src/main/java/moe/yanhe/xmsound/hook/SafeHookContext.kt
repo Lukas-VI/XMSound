@@ -4,6 +4,7 @@ import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 import moe.yanhe.xmsound.hook.bluetooth.HyperAdapterProbe
 import moe.yanhe.xmsound.hook.bluetooth.MiuiHeadsetBinderProbe
+import moe.yanhe.xmsound.hook.bluetooth.XiaomiHeadsetSpoofHook
 import moe.yanhe.xmsound.hook.milink.MiLinkHeadsetProbe
 
 /**
@@ -22,7 +23,10 @@ object HookRegistry {
         }
         when (packageName) {
             "com.android.bluetooth" -> add(HyperAdapterProbe())
-            "com.xiaomi.bluetooth" -> add(MiuiHeadsetBinderProbe())
+            "com.xiaomi.bluetooth" -> {
+                add(XiaomiHeadsetSpoofHook())
+                add(MiuiHeadsetBinderProbe())
+            }
             "com.milink.service" -> add(MiLinkHeadsetProbe())
         }
     }
