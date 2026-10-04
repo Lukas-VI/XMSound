@@ -42,9 +42,9 @@ XMSound 是一个 Xposed / LSPosed 模块，参照 [OppoPods](https://github.com
 - [x] **模块正常注入 LSPosed 目标进程（含运行时类探针与 MiLink 钩子）**
 - [x] **机型伪装：澎湃原生耳机界面已为 XM5 打开**
 - [x] **系统级左右耳/盒电量 + 降噪状态显示（数据来自 SPP 协议层）**
-- [ ] 降噪控制回传（界面 → 协议层，通道已打通待联调）
-- [ ] 融合设备中心耳机卡片
+- [x] **系统内降噪控制（设置页与融合设备卡片均可切换，真机验证）**
 - [ ] 超级岛 / 通知卡片
+- [ ] 电池低电量提醒、更多机型
 
 > HyperOS 侧的实测 API 地图与落地计划见
 > [docs/hyperos-integration-plan.md](docs/hyperos-integration-plan.md)，
@@ -53,26 +53,37 @@ XMSound 是一个 Xposed / LSPosed 模块，参照 [OppoPods](https://github.com
 
 ### 实测效果
 
-蓝牙设置页中的 WF-1000XM5 详情页（截图见
-[docs/captures/hyperos-headset-page-xm5.png](docs/captures/hyperos-headset-page-xm5.png)）：
+**融合设备卡片**（[截图](docs/captures/hyperos-milink-card-xm5.png)）：
 
 ```
 WF-1000XM5
-左 93%   右 88%   充电盒 30%        ← 全部来自 Sony SPP 协议层
-通透     降噪(高亮)     关闭          ← 与耳机实际降噪状态一致
+左 88%   右 88%   充电盒 30%
+通透     降噪(高亮)     关闭         ← 点击可切换，耳机真实响应
+音量 41%
+```
+
+**蓝牙设置页**（[截图](docs/captures/hyperos-settings-page-xm5.png)）同样显示三档电量与降噪控制。
+
+一次真机验证的完整链路（设置页点击「关闭」）：
+
+```
+[SettingsHeadset] updateAncMode(0, fromUser=true) -> handling it ourselves
+[SettingsHeadset] forwarded mode=off
+XMSound-Sony: TX 3e 0c 00 00 00 00 07 68 17 01 00 00 00 10 a4 3c
 ```
 
 ### 模块集成状态
 
 | 能力 | 状态 |
 | --- | --- |
-| LSPosed 注入 `com.android.bluetooth` / `com.xiaomi.bluetooth` / `com.milink.service` | ✅ |
+| LSPosed 注入 `com.android.bluetooth` / `com.xiaomi.bluetooth` / `com.milink.service` / `com.android.settings` | ✅ |
 | 运行时类探针（实测 API 面） | ✅ 输出见 [docs/captures/](docs/captures/) |
 | 小米耳机 Binder 协议定位与完整 opcode 表（24 个方法） | ✅ |
 | 机型伪装（`checkSupport` → 受支持设备） | ✅ |
-| MIUI 状态串推送（左右耳 + 盒电量、降噪码） | ✅ 设置页已正确渲染 |
-| 降噪控制回传（界面 → 协议层） | 🔶 通道已通，待联调 |
-| 融合设备中心卡片 / 超级岛 / 通知卡片 | ⬜ 未开始 |
+| 状态推送（左右耳 + 盒电量、降噪码） | ✅ 设置页与设备卡片均正确渲染 |
+| 降噪控制回传（界面 → 协议层 → 耳机） | ✅ 真机验证 |
+| 跨进程状态缓存（避免 UI 线程 binder 阻塞） | ✅ |
+| 超级岛 / 通知卡片 | ⬜ 未开始 |
 
 
 ### 真机验证状态
