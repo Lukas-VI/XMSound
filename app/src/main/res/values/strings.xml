@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">XMSound</string>
     <string name="app_subtitle">Sony WF-1000XM5 for HyperOS</string>
+    <string name="module_description">System-level Sony WF-1000XM5 control for Xiaomi HyperOS.</string>
 
     <!-- Tabs -->
     <string name="tab_earphones">Earphones</string>

@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">XMSound</string>
     <string name="app_subtitle">索尼 WF-1000XM5 适配澎湃OS</string>
+    <string name="module_description">为小米澎湃OS提供系统级索尼 WF-1000XM5 控制。</string>
 
     <!-- Tabs -->
     <string name="tab_earphones">耳机</string>

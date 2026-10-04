@@ -76,6 +76,8 @@ kotlin {
 dependencies {
     implementation(libs.coreKtx)
     compileOnly(libs.libxposedApi)
+    // Matches the known-working libxposed modules on this framework (OppoPods, HyperEars).
+    implementation(libs.libxposedService)
     implementation(libs.kotlinx.serialization.json)
 
     // Compose
