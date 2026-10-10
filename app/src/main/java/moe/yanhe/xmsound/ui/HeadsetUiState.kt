@@ -3,15 +3,15 @@ package moe.yanhe.xmsound.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import moe.yanhe.xmsound.pods.sony.SonyHeadsetController
+import moe.yanhe.xmsound.pods.sony.SonyRemoteController
 import moe.yanhe.xmsound.pods.sony.SonyHeadsetState
 import moe.yanhe.xmsound.pods.sony.TrafficLine
 
 /**
- * Bridges the thread-safe [SonyHeadsetController] into Compose state. Every callback arrives on the
+ * Bridges the thread-safe [SonyRemoteController] into Compose state. Every callback arrives on the
  * main thread (the controller marshals for us), so writing the snapshot state here is safe.
  */
-class HeadsetUiState(private val controller: SonyHeadsetController) {
+class HeadsetUiState(private val controller: SonyRemoteController) {
 
     var headset by mutableStateOf(controller.state)
         private set
@@ -25,9 +25,9 @@ class HeadsetUiState(private val controller: SonyHeadsetController) {
     var traffic by mutableStateOf(controller.traffic())
         private set
 
-    val controllerRef: SonyHeadsetController get() = controller
+    val controllerRef: SonyRemoteController get() = controller
 
-    private val observer = object : SonyHeadsetController.Observer {
+    private val observer = object : SonyRemoteController.Observer {
         override fun onStateChanged(state: SonyHeadsetState) {
             headset = state
         }

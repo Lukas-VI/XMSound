@@ -21,7 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import moe.yanhe.xmsound.pods.sony.SonyHeadsetController
+import moe.yanhe.xmsound.pods.sony.SonyRemoteController
 import moe.yanhe.xmsound.ui.AppPrefs
 import moe.yanhe.xmsound.ui.HeadsetUiState
 import moe.yanhe.xmsound.ui.XMSoundApp
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             XMSoundTheme {
                 val context = LocalContext.current
-                val controller = remember { SonyHeadsetController.get(context) }
+                val controller = remember { SonyRemoteController.get(context) }
                 val ui = remember { HeadsetUiState(controller) }
 
                 var granted by remember { mutableStateOf(hasBluetoothPermissions(context)) }

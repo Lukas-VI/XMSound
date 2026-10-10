@@ -6,81 +6,91 @@ import android.content.Intent
 import android.util.Log
 
 /**
- * Intent-driven control surface for the headset session.
+ * Entry point for driving the headset from the module process.
  *
- * This exists for two reasons:
- *  - the HyperOS hook layer runs in other processes and needs a way to drive the session, and
- *  - it makes the module testable without the UI, e.g.
- *    `adb shell am broadcast -a moe.yanhe.xmsound.action.SET_NOISE --es mode ambient`
+ * The session itself lives in `com.android.bluetooth` ([SonyBridge.OWNER_PACKAGE]), so this only
+ * forwards the command there - the listener does not need the module to be running, which is the
+ * whole point of the split.
+ *
+ * It also keeps the module testable without any UI, e.g.
+ * `adb shell am broadcast -n moe.yanhe.xmsound/.pods.sony.SonyControlReceiver -a moe.yanhe.xmsound.action.SET_NOISE --es mode ambient`
  */
 class SonyControlReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "XMSound-Sony"
 
-        const val ACTION_CONNECT = "moe.yanhe.xmsound.action.CONNECT"
-        const val ACTION_DISCONNECT = "moe.yanhe.xmsound.action.DISCONNECT"
-        const val ACTION_RECONNECT = "moe.yanhe.xmsound.action.RECONNECT"
-        const val ACTION_REFRESH = "moe.yanhe.xmsound.action.REFRESH"
-        const val ACTION_SET_NOISE = "moe.yanhe.xmsound.action.SET_NOISE"
-        const val ACTION_SET_AMBIENT_LEVEL = "moe.yanhe.xmsound.action.SET_AMBIENT_LEVEL"
-        const val ACTION_SET_FOCUS_ON_VOICE = "moe.yanhe.xmsound.action.SET_FOCUS_ON_VOICE"
-        const val ACTION_CYCLE_NOISE = "moe.yanhe.xmsound.action.CYCLE_NOISE"
+        const val ACTION_CONNECT = SonyBridge.ACTION_CONNECT
+        const val ACTION_DISCONNECT = SonyBridge.ACTION_DISCONNECT
+        const val ACTION_RECONNECT = SonyBridge.ACTION_RECONNECT
+        const val ACTION_REFRESH = SonyBridge.ACTION_REFRESH
+        const val ACTION_SET_NOISE = SonyBridge.ACTION_SET_NOISE
+        const val ACTION_SET_AMBIENT_LEVEL = SonyBridge.ACTION_SET_AMBIENT_LEVEL
+        const val ACTION_SET_FOCUS_ON_VOICE = SonyBridge.ACTION_SET_FOCUS_ON_VOICE
+        const val ACTION_CYCLE_NOISE = SonyBridge.ACTION_CYCLE_NOISE
 
-        /** Re-post the system surfaces on demand; also the deterministic way to test them. */
-        const val ACTION_SHOW_ISLAND = "moe.yanhe.xmsound.action.SHOW_ISLAND"
+        /** Ask the owner to raise the native popup; the owner holds the STATUS_BAR permission. */
+        const val ACTION_SHOW_ISLAND = SonyBridge.ACTION_SHOW_ISLAND
+
+        /** Re-post the module's own notification card. Handled locally, not forwarded. */
         const val ACTION_SHOW_CARD = "moe.yanhe.xmsound.action.SHOW_CARD"
 
         const val EXTRA_MODE = "mode"
         const val EXTRA_LEVEL = "level"
         const val EXTRA_ENABLED = "enabled"
 
+        /** The mode names the notification card's actions use. */
         const val MODE_OFF = "off"
         const val MODE_NC = "nc"
         const val MODE_AMBIENT = "ambient"
+
+        /** Map the card's short names onto the protocol's enum names. */
+        fun protocolMode(short: String?): String? = when (short?.lowercase()) {
+            MODE_OFF -> SonyNoiseMode.OFF.name
+            MODE_NC -> SonyNoiseMode.NOISE_CANCELLING.name
+            MODE_AMBIENT -> SonyNoiseMode.AMBIENT_SOUND.name
+            else -> null
+        }
+
+        /** Every action this receiver answers; kept in sync with the manifest. */
+        val ACTIONS = listOf(
+            ACTION_CONNECT,
+            ACTION_DISCONNECT,
+            ACTION_RECONNECT,
+            ACTION_REFRESH,
+            ACTION_SET_NOISE,
+            ACTION_SET_AMBIENT_LEVEL,
+            ACTION_SET_FOCUS_ON_VOICE,
+            ACTION_CYCLE_NOISE,
+            ACTION_SHOW_ISLAND,
+            ACTION_SHOW_CARD,
+        )
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val controller = SonyHeadsetController.get(context)
         val action = intent.action ?: return
-        Log.i(TAG, "control action=$action extras=${intent.extras}")
+        Log.i(TAG, "control action=$action")
 
-        when (action) {
-            ACTION_CONNECT -> controller.connect()
-            ACTION_DISCONNECT -> controller.disconnect()
-            ACTION_RECONNECT -> controller.reconnect()
-            ACTION_REFRESH -> controller.refresh()
-            ACTION_CYCLE_NOISE -> controller.cycleNoiseMode()
-
-            ACTION_SET_NOISE -> {
-                val mode = when (intent.getStringExtra(EXTRA_MODE)?.lowercase()) {
-                    MODE_OFF -> SonyNoiseMode.OFF
-                    MODE_NC -> SonyNoiseMode.NOISE_CANCELLING
-                    MODE_AMBIENT -> SonyNoiseMode.AMBIENT_SOUND
-                    else -> return
-                }
-                controller.setNoiseMode(mode)
-            }
-
-            ACTION_SET_AMBIENT_LEVEL -> {
-                if (!intent.hasExtra(EXTRA_LEVEL)) return
-                controller.setAmbientLevel(intent.getIntExtra(EXTRA_LEVEL, 0))
-            }
-
-            ACTION_SET_FOCUS_ON_VOICE ->
-                controller.setFocusOnVoice(intent.getBooleanExtra(EXTRA_ENABLED, false))
-
-            ACTION_SHOW_ISLAND -> {
-                // The popup itself is raised by the Bluetooth-process hook, which holds the
-                // STATUS_BAR permission; this only asks for it.
-                controller.requestIsland()
-                Log.i(TAG, "island requested, state=${controller.state}")
-            }
-
-            ACTION_SHOW_CARD -> {
-                HeadsetNotificationCard.update(context, controller.state, controller.selectedDevice?.name)
-                Log.i(TAG, "manual card posted state=${controller.state}")
-            }
+        if (action == ACTION_SHOW_CARD) {
+            val controller = SonyRemoteController.get(context)
+            HeadsetNotificationCard.update(context, controller.state, controller.selectedDevice?.name)
+            Log.i(TAG, "card re-posted state=${controller.state}")
+            return
         }
+
+        // Everything else belongs to the owner; forward it verbatim, remapping the card's short
+        // mode names onto the enum names the owner understands.
+        val forwarded = Intent(action).setPackage(SonyBridge.OWNER_PACKAGE)
+        intent.extras?.let { forwarded.putExtras(it) }
+        if (action == ACTION_SET_NOISE) {
+            val mode = protocolMode(intent.getStringExtra(EXTRA_MODE))
+            if (mode == null) {
+                Log.w(TAG, "unknown mode '${intent.getStringExtra(EXTRA_MODE)}'")
+                return
+            }
+            forwarded.putExtra(SonyBridge.EXTRA_MODE, mode)
+        }
+        runCatching { context.sendBroadcast(forwarded) }
+            .onFailure { Log.w(TAG, "forward failed: ${it.message}") }
     }
 }

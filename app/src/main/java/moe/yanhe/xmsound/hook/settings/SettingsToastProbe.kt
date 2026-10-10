@@ -5,6 +5,7 @@ import android.widget.Toast
 import moe.yanhe.xmsound.hook.HookLog
 import moe.yanhe.xmsound.hook.SafeHookContext
 import moe.yanhe.xmsound.hook.getObjectField
+import moe.yanhe.xmsound.pods.sony.SonyBridge
 
 /**
  * Makes the Bluetooth settings page's noise-control buttons work, and explains refusals.
@@ -96,7 +97,9 @@ class SettingsToastProbe : SafeHookContext() {
         val context = appContext() ?: return
         runCatching {
             context.sendBroadcast(
-                Intent(ACTION_SET_NOISE).setPackage(MODULE_PACKAGE).putExtra("mode", name),
+                Intent(SonyBridge.ACTION_SET_NOISE)
+                    .setPackage(SonyBridge.OWNER_PACKAGE)
+                    .putExtra(SonyBridge.EXTRA_MODE, name),
             )
             HookLog.i(tag, "forwarded mode=$name")
         }.onFailure { HookLog.w(tag, "forward failed: ${it.message}") }

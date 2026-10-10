@@ -21,6 +21,26 @@ XMSound 是一个 Xposed / LSPosed 模块，参照 [OppoPods](https://github.com
 与 OppoPods 的主要区别在于协议层：OPPO 耳机与索尼耳机使用完全不同的私有 SPP 协议，
 因此本项目在 `pods/sony/` 下独立实现了索尼协议栈。
 
+## 架构
+
+模块**不依赖自己的进程存活**。SPP 会话跑在被注入的 `com.android.bluetooth` 里，App 只是客户端：
+
+```
+com.android.bluetooth                          ← 会话所有者（系统常驻，不会被清理）
+  SonyRuntime
+    ├── SonyHeadsetSession (Sony V2 SPP)
+    ├── 状态变化 → 广播给 UI 与其余作用域进程
+    ├── 接收命令广播
+    └── 触发原生连接弹窗 / 超级岛（唯一持有 STATUS_BAR 权限的地方）
+
+com.xiaomi.bluetooth / com.milink.service      ← 伪装层，状态来自广播
+moe.yanhe.xmsound                              ← 仅 UI；清后台不影响耳机
+```
+
+早期版本把会话放在模块自己的进程里，并让 hook 用 ContentProvider 轮询状态。那既会在 UI 线程上
+跨进程阻塞，又会因为 ContentProvider 按需拉起进程而**让模块看起来必须常驻后台**。
+现在两个方向都改为广播，且状态广播以 `setPackage` 定向投递，其他应用看不到。
+
 ## 目标设备
 
 | 项目 | 值 |

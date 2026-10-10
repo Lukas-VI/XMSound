@@ -36,8 +36,9 @@
         </activity>
 
         <!--
-          Intent-driven control surface. Used by the HyperOS hook layer (other processes) and by
-          `adb shell am broadcast` for hardware testing.
+          Intent-driven control surface. Commands are forwarded to the process that owns the session
+          (com.android.bluetooth), and it is also how `adb shell am broadcast` drives the module for
+          hardware testing.
         -->
         <receiver
             android:name=".pods.sony.SonyControlReceiver"
@@ -55,16 +56,6 @@
                 <action android:name="moe.yanhe.xmsound.action.SHOW_CARD" />
             </intent-filter>
         </receiver>
-
-        <!--
-          Exposes the live headset state to the hook layer running inside the Bluetooth processes.
-          Guarded by BLUETOOTH_CONNECT, which com.android.bluetooth / com.xiaomi.bluetooth hold.
-        -->
-        <provider
-            android:name=".pods.sony.SonyStateProvider"
-            android:authorities="moe.yanhe.xmsound.state"
-            android:exported="true"
-            android:permission="android.permission.BLUETOOTH_CONNECT" />
 
         <!-- Set as Xposed Module -->
         <meta-data

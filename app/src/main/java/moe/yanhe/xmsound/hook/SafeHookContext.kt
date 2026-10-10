@@ -91,20 +91,20 @@ abstract class SafeHookContext : HookContext() {
     }
 
     /**
-     * The hooked process's Application, used to reach our own process through the state provider.
+     * The hooked process's Application, used as the context for state broadcasts.
      * `ActivityThread.currentApplication()` is the only context available before any of the
      * hooked objects have been seen.
      */
     protected fun appContext(): android.content.Context? = HeadsetStateCache.appContext()
 
     /**
-     * Live headset state, served from the per-process cache.
+     * Live headset state, served from this process's cache.
      *
-     * Never call the provider directly from a hook: HyperOS reads these values on the main thread
-     * while laying out the UI, and a synchronous binder round trip there freezes the process.
+     * Never read it any other way: HyperOS reads these values on the main thread while laying out
+     * the UI, so anything that can block here freezes the process.
      */
     protected fun queryHeadsetState(): android.os.Bundle? {
-        HeadsetStateCache.start()
+        appContext()?.let { HeadsetStateCache.start(it) }
         return HeadsetStateCache.get()
     }
 }

@@ -9,6 +9,7 @@ import moe.yanhe.xmsound.hook.HeadsetStateCache
 import moe.yanhe.xmsound.hook.HookLog
 import moe.yanhe.xmsound.hook.SafeHookContext
 import moe.yanhe.xmsound.hook.bluetooth.strongtoast.MiuiStrongToast
+import moe.yanhe.xmsound.pods.sony.SonyBridge
 import moe.yanhe.xmsound.hook.callMethod
 
 /**
@@ -57,6 +58,7 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
     private var pushHandler: android.os.Handler? = null
 
     override fun onHook() {
+        appContext()?.let { HeadsetStateCache.start(it) }
         install("BluetoothHeadsetService#onCreate") {
             val method = findMethodAnywhere(SERVICE, "onCreate")
             hookAfter(method) {
@@ -124,8 +126,13 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
             var lastIslandRequest = -1
             while (true) {
                 runCatching {
-                    HeadsetStateCache.refresh()
-                    val bundle = HeadsetStateCache.get() ?: return@runCatching
+                    // In the owning process this reads the live controller; elsewhere it is whatever
+                    // the last state broadcast carried. Ask for a snapshot until one arrives.
+                    val bundle = HeadsetStateCache.get()
+                    if (bundle == null) {
+                        HeadsetStateCache.requestRefresh()
+                        return@runCatching
+                    }
                     val payload = bundle.getString(KEY_PAYLOAD)
                     val islandRequest = bundle.getInt(KEY_ISLAND_REQUEST, 0)
                     val explicitRequest = lastIslandRequest >= 0 && islandRequest != lastIslandRequest
@@ -249,8 +256,8 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
 
     private fun schedulePush(address: String?, delayMs: Long) {
         val handler = pushHandler ?: return
-        // Pull fresh state off the calling thread, then hand it to the UI shortly after.
-        HeadsetStateCache.refreshAsync()
+        // The state arrives by broadcast; make sure a fresh one is on its way, then hand it over.
+        HeadsetStateCache.requestRefresh()
         handler.postDelayed({ pushStatus(address) }, delayMs)
     }
 
@@ -432,24 +439,26 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
             HookLog.w(tag, "unknown ANC mode $mode, not forwarding")
             return
         }
-        sendToApp(ACTION_SET_NOISE) { it.putExtra("mode", name) }
+        sendToOwner(SonyBridge.ACTION_SET_NOISE) { it.putExtra(SonyBridge.EXTRA_MODE, name) }
     }
 
     private fun forwardAmbientLevel(level: Int) {
-        sendToApp(ACTION_SET_AMBIENT_LEVEL) { it.putExtra("level", level) }
+        sendToOwner(SonyBridge.ACTION_SET_AMBIENT_LEVEL) { it.putExtra(SonyBridge.EXTRA_LEVEL, level) }
     }
 
     /**
-     * The Sony session runs in the module's own process, so control changes are handed over as an
-     * explicit broadcast to that package.
+     * Hand a control change to the process that owns the session.
+     *
+     * Not the module process: the session lives in `com.android.bluetooth` precisely so that the
+     * module does not have to be running.
      */
-    private fun sendToApp(action: String, configure: (Intent) -> Unit) {
+    private fun sendToOwner(action: String, configure: (Intent) -> Unit) {
         val context = serviceContext ?: run {
             HookLog.w(tag, "no context yet, cannot forward $action")
             return
         }
         runCatching {
-            val intent = Intent(action).setPackage(MODULE_PACKAGE)
+            val intent = Intent(action).setPackage(SonyBridge.OWNER_PACKAGE)
             configure(intent)
             context.sendBroadcast(intent)
             HookLog.i(tag, "forwarded $action")
@@ -458,10 +467,6 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
 
     private companion object {
         const val SERVICE = "com.android.bluetooth.ble.app.headset.BluetoothHeadsetService"
-        const val MODULE_PACKAGE = "moe.yanhe.xmsound"
-
-        const val ACTION_SET_NOISE = "moe.yanhe.xmsound.action.SET_NOISE"
-        const val ACTION_SET_AMBIENT_LEVEL = "moe.yanhe.xmsound.action.SET_AMBIENT_LEVEL"
 
         /** Reference implementation's device id and capability bitmap for the same platform. */
         const val FAKE_DEVICE_ID = "01010607"

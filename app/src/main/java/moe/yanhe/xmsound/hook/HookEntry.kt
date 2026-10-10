@@ -5,6 +5,8 @@ import androidx.annotation.RequiresApi
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
+import moe.yanhe.xmsound.hook.runtime.SonyRuntime
+import moe.yanhe.xmsound.pods.sony.SonyBridge
 
 /**
  * libxposed entry point (see `assets/xposed_init`).
@@ -42,6 +44,13 @@ class HookEntry : XposedModule() {
 
         HookLog.module = this
         HookLog.i(TAG, "package loaded: ${param.packageName}")
+
+        // The session owner is independent of whatever probes this package installs, so it is
+        // started before the early return below.
+        if (param.packageName == SonyBridge.OWNER_PACKAGE) {
+            HookLog.i(TAG, "starting the headset session owner in ${param.packageName}")
+            SonyRuntime.bootstrap()
+        }
 
         val hooks = HookRegistry.hooksFor(param.packageName, PROBE_ENABLED)
 

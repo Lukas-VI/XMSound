@@ -7,6 +7,7 @@ import moe.yanhe.xmsound.hook.HookLog
 import moe.yanhe.xmsound.hook.SafeHookContext
 import moe.yanhe.xmsound.hook.callMethod
 import moe.yanhe.xmsound.hook.getObjectField
+import moe.yanhe.xmsound.pods.sony.SonyBridge
 
 /**
  * Makes MiLink - the Fusion Device Center's runtime - report the WF-1000XM5 as a live headset.
@@ -57,7 +58,7 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
 
     override fun onHook() {
         notifyHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        HeadsetStateCache.start()
+        appContext()?.let { HeadsetStateCache.start(it) }
         MX_CLASSES.forEach { className ->
             hookDeviceResult(className, "checkIsMiTWS") { 1 }
             hookDeviceResult(className, "getDeviceId") { FAKE_DEVICE_ID }
@@ -225,9 +226,8 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
      * reference implementation: 8 = noise control, 4 = battery / general state.
      */
     private fun schedulePropertyNotify() {
-        // Ask for fresh state off the calling thread: this may run on the UI thread, and the
-        // refresh is a binder round trip.
-        HeadsetStateCache.refreshAsync()
+        // Make sure a fresh state broadcast is on its way; this may run on the UI thread.
+        HeadsetStateCache.requestRefresh()
         // The listener re-renders the whole card, so it is invoked off the main thread with a
         // delay long enough for the headset to have applied the change.
         notifyExecutor.execute {
@@ -265,9 +265,9 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
         val context = appContext() ?: return
         runCatching {
             context.sendBroadcast(
-                Intent(ACTION_SET_NOISE)
-                    .setPackage(MODULE_PACKAGE)
-                    .putExtra("mode", mapped),
+                Intent(SonyBridge.ACTION_SET_NOISE)
+                    .setPackage(SonyBridge.OWNER_PACKAGE)
+                    .putExtra(SonyBridge.EXTRA_MODE, mapped),
             )
             HookLog.i(tag, "forwarded mode=$mapped")
         }.onFailure { HookLog.w(tag, "forward failed: ${it.message}") }

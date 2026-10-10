@@ -7,8 +7,8 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import java.util.concurrent.CopyOnWriteArrayList
-import moe.yanhe.xmsound.ui.AppPrefs
 
 /** One line of the on-the-wire protocol log. */
 data class TrafficLine(
@@ -43,7 +43,7 @@ class SonyHeadsetController private constructor(private val context: Context) {
         /** Preferred target; the WF-1000XM5 is what this module is built for. */
         private const val PREFERRED_MODEL = "WF-1000XM5"
 
-        /** Logcat tag for the app-side session, readable with `adb logcat -s XMSound-App`. */
+        /** Logcat tag for the session owner, readable with `adb logcat -s XMSound-App`. */
         const val TAG = "XMSound-App"
 
         /**
@@ -179,11 +179,18 @@ class SonyHeadsetController private constructor(private val context: Context) {
 
         val device = selectedDevice ?: resolveDevice()
         if (device == null) {
-            lastError = "No bonded headset found"
+            // This runs at boot, from inside the Bluetooth process, so the adapter or the paired
+            // device list may simply not be ready yet. Giving up here would leave the module dead
+            // until something else called connect(), which is exactly the bug this retry prevents.
+            lastError = "No bonded headset found yet"
+            Log.i(TAG, "connect: no bonded headset yet, will retry")
+            publish()
             post { observers.forEach { it.onConnectionChanged(false, lastError) } }
+            scheduleReconnect()
             return
         }
         selectedDevice = device
+        Log.i(TAG, "connect: using ${device.address}")
 
         lastError = null
         val newSession = SonyHeadsetSession(device, adapter, sessionListener)
@@ -256,31 +263,22 @@ class SonyHeadsetController private constructor(private val context: Context) {
     // ------------------------------------------------------------ system surfaces
 
     /**
-     * Mirror the state onto the module-owned HyperOS surface: the ongoing notification card.
+     * Called whenever the state or the error changes, so whoever hosts this controller can publish
+     * it - in practice the Bluetooth process broadcasting to the UI and the other hook processes.
      *
-     * The island / connection popup is not shown from here - it is a strong toast driven from the
-     * Bluetooth process, which is the only place holding the `STATUS_BAR` permission.
+     * Deliberately a callback rather than a direct notification/broadcast: the same class runs both
+     * in the module process (where it is driven by the UI) and in a hooked system process (where it
+     * is the source of truth), and those two need very different side effects.
      */
-    private fun publishToSystem(state: SonyHeadsetState) {
-        runCatching {
-            val name = runCatching { selectedDevice?.name }.getOrNull()
-
-            if (AppPrefs.notificationCardEnabled(context) && state.connected) {
-                HeadsetNotificationCard.update(context, state, name)
-            } else {
-                HeadsetNotificationCard.cancel(context)
-            }
-        }.onFailure {
-            // Never let a notification problem break the session.
-        }
-    }
+    @Volatile
+    var statePublisher: ((SonyHeadsetState, String?) -> Unit)? = null
 
     // ------------------------------------------------------------ session plumbing
 
     private val sessionListener = object : SonyHeadsetSession.Listener {
         override fun onStateChanged(state: SonyHeadsetState) {
             this@SonyHeadsetController.state = state
-            publishToSystem(state)
+            publish()
             post { observers.forEach { it.onStateChanged(state) } }
         }
 
@@ -294,6 +292,7 @@ class SonyHeadsetController private constructor(private val context: Context) {
                     this@SonyHeadsetController.state.copy(connected = false, protocolVersion = 0)
                 scheduleReconnect()
             }
+            publish()
             post {
                 observers.forEach { it.onConnectionChanged(connected, message) }
                 observers.forEach { it.onStateChanged(this@SonyHeadsetController.state) }
@@ -306,7 +305,13 @@ class SonyHeadsetController private constructor(private val context: Context) {
                 trafficLog.addLast(line)
                 while (trafficLog.size > TRAFFIC_LIMIT) trafficLog.removeFirst()
             }
+            runCatching { }
             post { observers.forEach { it.onTraffic(line) } }
         }
+    }
+
+    /** Push the current state to the host, if one is attached. Never throws into the session. */
+    private fun publish() {
+        runCatching { statePublisher?.invoke(state, lastError) }
     }
 }
