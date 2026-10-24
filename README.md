@@ -47,6 +47,26 @@ moe.yanhe.xmsound                              ← 仅 UI；清后台不影响�
 `com.android.bluetooth` 发布（该 uid 本来就能发通知，蓝牙文件传输就是这么做的），与超级岛
 一样不依赖模块进程。设置页的开关改动也会即时广播给会话宿主。
 
+### 耳机流转（设备中心）
+
+XM5 不说小米的私有流转协议，但它本身是**双主机多点**耳机：只要本机连上/断开 A2DP+HFP，
+耳机会自动在两台主机间切换。模块据此把系统自己的流转入口接到了真实的蓝牙 profile 上：
+
+```
+设备中心 (com.miui.circulate.*) / MxBluetoothService
+  isSupportAudioSwitch → 1        ← 流转入口出现
+  getSwitchState / component8 → 本机是否持有音频（audioHere）
+  connectMma / clientConnect / connect(...) ─┐
+  disconnectMma / clientDisconnect / ...     ─┤ 转发给 owner
+                                             ▼
+com.android.bluetooth: BtProfiles
+  A2dpService.connect/disconnect(XM5) + HeadsetService.…（进程内反射直调）
+  → profile 状态广播 → audioHere → 状态重发给所有伪装层
+```
+
+"流转到手机" = 连接 profile；"流转离开" = 断开 profile，耳机自动回到另一台主机
+（实测耳机还配对着一台 Xiaomi Pad 5，切换真实生效）。
+
 ## 目标设备
 
 | 项目 | 值 |
@@ -71,6 +91,7 @@ moe.yanhe.xmsound                              ← 仅 UI；清后台不影响�
 - [x] **系统内降噪控制（设置页与融合设备卡片均可切换，真机验证）**
 - [x] **通知卡片（常驻电量 + 降噪按钮）**
 - [x] **超级岛 / 原生连接弹窗（复用小米自己的耳机动画）**
+- [x] **设备中心耳机流转（多点双连模拟，真机验证）**
 - [ ] 电池低电量提醒、更多机型
 
 > HyperOS 侧的实测 API 地图与落地计划见

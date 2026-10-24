@@ -58,6 +58,13 @@ object SonyBridge {
     const val ACTION_REQUEST_STATE = "${PREFIX}REQUEST_STATE"
     const val ACTION_REQUEST_TRAFFIC = "${PREFIX}REQUEST_TRAFFIC"
 
+    /**
+     * Audio handoff (耳机流转): bring the headset's audio to this phone, or release it so the
+     * headset's multipoint second host takes over. The device center's 流转 entry sends these.
+     */
+    const val ACTION_AUDIO_CONNECT = "${PREFIX}AUDIO_CONNECT"
+    const val ACTION_AUDIO_DISCONNECT = "${PREFIX}AUDIO_DISCONNECT"
+
     const val EXTRA_MODE = "mode"
     const val EXTRA_LEVEL = "level"
     const val EXTRA_ENABLED = "enabled"
@@ -95,6 +102,8 @@ object SonyBridge {
         ACTION_SHOW_ISLAND,
         ACTION_SHOW_CARD,
         ACTION_APPLY_SETTINGS,
+        ACTION_AUDIO_CONNECT,
+        ACTION_AUDIO_DISCONNECT,
         ACTION_REQUEST_STATE,
         ACTION_REQUEST_TRAFFIC,
     )

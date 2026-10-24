@@ -126,6 +126,29 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
         hookAncMode(binderClass)
         hookAncLevel(binderClass)
         hookCallbackRegistration(binderClass)
+        hookBinderConnection(binderClass, "connect", connect = true)
+        hookBinderConnection(binderClass, "disconnect", connect = false)
+    }
+
+    /**
+     * The headset Binder's `connect(BluetoothDevice)` / `disconnect(BluetoothDevice)` (opcodes 4/5)
+     * are how HyperOS brings a first-party headset to this phone or releases it. Mapped onto the
+     * same audio-handoff path the device center's 流转 entry uses.
+     */
+    private fun hookBinderConnection(binderClass: Class<*>, name: String, connect: Boolean) {
+        install("$name(BluetoothDevice)") {
+            val method = findMethodAnywhere(binderClass.name, name, BluetoothDevice::class.java)
+            hookBefore(method) {
+                val device = args.getOrNull(0) as? BluetoothDevice
+                if (!isTargetDevice(device)) return@hookBefore
+                HookLog.i(tag, "$name(${device?.address}) -> audio handoff ${if (connect) "to phone" else "away"}")
+                sendToOwner(
+                    if (connect) SonyBridge.ACTION_AUDIO_CONNECT else SonyBridge.ACTION_AUDIO_DISCONNECT,
+                ) { /* no extras */ }
+                // Both are void on the AIDL; swallow the stock not-supported path.
+                result = null
+            }
+        }
     }
 
     /**

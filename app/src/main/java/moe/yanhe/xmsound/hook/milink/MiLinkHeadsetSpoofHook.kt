@@ -74,16 +74,29 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
             hookAncCommand(className, "openTransparent", SonyAnc.AMBIENT, MIUI_ANC_AMBIENT)
 
             hookStringResult(className, "isMiTWS") { true }
-            hookStringResult(className, "isSupportAudioSwitch") { 0 }
+            // 1 = the device center offers the 流转 entry for this headset.
+            hookStringResult(className, "isSupportAudioSwitch") { 1 }
             hookStringResult(className, "getRingFindState") { false }
+
+            // The device center's own handoff calls: connectMma takes the headset's audio to
+            // this phone, disconnectMma releases it to the multipoint second host.
+            hookMmaCommand(className, "connectMma", connect = true)
+            hookMmaCommand(className, "disconnectMma", connect = false)
         }
+
+        // The Fusion Device Center's 流转 protocol layer (com.miui.circulate.*).
+        hookCirculateCommand("clientConnect", connect = true)
+        hookCirculateCommand("clientDisconnect", connect = false)
+        hookCirculateFuture("connect", connect = true)
+        hookCirculateFuture("disconnect", connect = false)
 
         hookDeviceResult(ANC_CONTROLLER, "getDeviceId") { FAKE_DEVICE_ID }
         hookDeviceResult(ANC_CONTROLLER, "getBatteryLevelCache") { batteryList() }
         hookDeviceResult(ANC_CONTROLLER, "getAncState") { ancState() }
         hookDeviceResult(ANC_CONTROLLER, "getHeadsetPropertyBlock") { batteryPercent() }
         hookDeviceResult(ANC_CONTROLLER, "getFindRingState") { -1 }
-        hookStringResult(ANC_CONTROLLER, "getSwitchState") { 0 }
+        // Whether the headset's audio currently lives on this phone - the 流转 switch state.
+        hookStringResult(ANC_CONTROLLER, "getSwitchState") { audioHere() }
         hookAncStateBlock()
 
         // HeadsetInfo carries the same data as immutable components for the UI list.
@@ -93,8 +106,8 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
         hookNoArg(HEADSET_INFO, "component4") { batteryList() }
         hookNoArg(HEADSET_INFO, "getMode") { ancState() }
         hookNoArg(HEADSET_INFO, "component5") { ancState() }
-        hookNoArg(HEADSET_INFO, "getSwitchState") { 0 }
-        hookNoArg(HEADSET_INFO, "component8") { 0 }
+        hookNoArg(HEADSET_INFO, "getSwitchState") { audioHere() }
+        hookNoArg(HEADSET_INFO, "component8") { audioHere() }
         hookNoArg(HEADSET_INFO, "getFindRingState") { -1 }
         hookNoArg(HEADSET_INFO, "component11") { -1 }
 
@@ -126,6 +139,80 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
             if (bundle.getBoolean(KEY_LEFT_CHARGING, false)) 1 else 0,
             if (bundle.getBoolean(KEY_RIGHT_CHARGING, false)) 1 else 0,
         )
+    }
+
+    /** 1 when the headset's audio currently lives on this phone - the 流转 switch state. */
+    private fun audioHere(): Int = if (state()?.getBoolean(KEY_AUDIO_HERE, false) == true) 1 else 0
+
+    // ---------------------------------------------------------------- audio handoff (流转)
+
+    /**
+     * `connectMma` / `disconnectMma` on [com.xiaomi.mxbluetoothsdk.service.MxBluetoothService]:
+     * what HyperOS calls to take or release a first-party headset. The owner drives the A2DP/HFP
+     * profiles, and the XM5's own multipoint firmware switches to / from its other host.
+     */
+    private fun hookMmaCommand(className: String, methodName: String, connect: Boolean) {
+        install("$className#$methodName") {
+            val method = findMethodAnywhere(className, methodName, BluetoothDevice::class.java)
+            hookBefore(method) {
+                val device = args.getOrNull(0) as? BluetoothDevice
+                if (!isTargetDevice(device)) return@hookBefore
+                HookLog.i(tag, "$methodName(${device?.address}) -> audio handoff ${if (connect) "to phone" else "away"}")
+                sendToOwner(
+                    if (connect) SonyBridge.ACTION_AUDIO_CONNECT else SonyBridge.ACTION_AUDIO_DISCONNECT,
+                )
+                // MmaErrorCode-style int; 0 reads as success by every caller we could observe.
+                result = 0
+            }
+        }
+    }
+
+    /** The Fusion Device Center's 流转 protocol client (int-returning variants). */
+    private fun hookCirculateCommand(methodName: String, connect: Boolean) {
+        install("HeadsetServiceClient#$methodName") {
+            val method = findMethodByParamCount(CIRCULATE_CLIENT, methodName, 2)
+            hookBefore(method) {
+                if (!isOurHeadset(args.getOrNull(1))) return@hookBefore
+                HookLog.i(tag, "$methodName(circulate) -> audio handoff ${if (connect) "to phone" else "away"}")
+                sendToOwner(
+                    if (connect) SonyBridge.ACTION_AUDIO_CONNECT else SonyBridge.ACTION_AUDIO_DISCONNECT,
+                )
+                result = 0
+            }
+        }
+    }
+
+    /** The CompletableFuture-returning `connect`/`disconnect` used by the device center UI flow. */
+    private fun hookCirculateFuture(methodName: String, connect: Boolean) {
+        install("HeadsetServiceClient#$methodName(future)") {
+            val method = findMethodByParamCount(CIRCULATE_CLIENT, methodName, 3)
+            hookBefore(method) {
+                if (!isOurHeadset(args.getOrNull(1))) return@hookBefore
+                HookLog.i(tag, "$methodName(circulate, future) -> audio handoff ${if (connect) "to phone" else "away"}")
+                sendToOwner(
+                    if (connect) SonyBridge.ACTION_AUDIO_CONNECT else SonyBridge.ACTION_AUDIO_DISCONNECT,
+                )
+                result = java.util.concurrent.CompletableFuture.completedFuture(0)
+            }
+        }
+    }
+
+    /** Match the circulate layer's `HeadsetDeviceInfo` against the headset this module owns. */
+    private fun isOurHeadset(info: Any?): Boolean {
+        if (info == null) return false
+        val id = runCatching { getObjectField(info, "deviceId") as? String }.getOrNull() ?: return false
+        val ourAddress = state()?.getString(KEY_ADDRESS, null)
+        return (ourAddress != null && id.equals(ourAddress, ignoreCase = true)) || id == FAKE_DEVICE_ID
+    }
+
+    private fun sendToOwner(action: String) {
+        val context = appContext() ?: run {
+            HookLog.w(tag, "no context yet, cannot forward $action")
+            return
+        }
+        runCatching {
+            context.sendBroadcast(Intent(action).setPackage(SonyBridge.OWNER_PACKAGE))
+        }.onFailure { HookLog.w(tag, "forward $action failed: ${it.message}") }
     }
 
     // ---------------------------------------------------------------- installers
@@ -302,6 +389,9 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
         const val ANC_CONTROLLER = "com.miui.headset.runtime.AncBatteryController"
         const val HEADSET_INFO = "com.miui.headset.api.HeadsetInfo"
 
+        /** The Fusion Device Center's 流转 protocol client. */
+        const val CIRCULATE_CLIENT = "com.miui.circulate.api.protocol.headset.HeadsetServiceClient"
+
         val MX_CLASSES = listOf(
             "com.xiaomi.mxbluetoothsdk.manager.MxBluetoothManager",
             "com.xiaomi.mxbluetoothsdk.service.MxBluetoothService",
@@ -337,6 +427,8 @@ class MiLinkHeadsetSpoofHook : SafeHookContext() {
         const val KEY_RIGHT_CHARGING = "rightCharging"
         const val KEY_CASE_CHARGING = "caseCharging"
         const val KEY_ANC_STATE = "ancState"
+        const val KEY_ADDRESS = "address"
+        const val KEY_AUDIO_HERE = "audioHere"
 
         /** Delay before poking the UI listener, to let the headset actually apply the change. */
         const val NOTIFY_DELAY_MS = 1_200L

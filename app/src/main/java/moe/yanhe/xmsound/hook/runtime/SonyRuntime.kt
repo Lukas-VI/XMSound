@@ -56,6 +56,17 @@ object SonyRuntime {
     @Volatile
     private var lastBroadcast: android.os.Bundle? = null
 
+    /**
+     * Whether the headset's audio currently lives on this phone - the value the device center's
+     * 流转 switch shows. Seeded from the A2DP service at startup, then kept current by the
+     * stack's own connection-state broadcasts.
+     */
+    @Volatile
+    private var audioHere = false
+
+    @Volatile
+    private var audioHereKnown = false
+
     /** True in the process that owns the session; false everywhere else. */
     @Volatile
     var isOwner: Boolean = false
@@ -105,7 +116,8 @@ object SonyRuntime {
      * depend on a particular class being touched, poll briefly for the application and then start.
      * The Bluetooth process creates its Application within milliseconds of being loaded.
      */
-    fun bootstrap() {
+    fun bootstrap(hostClassLoader: ClassLoader?) {
+        BtProfiles.hostClassLoader = hostClassLoader
         Thread({
             repeat(BOOTSTRAP_ATTEMPTS) {
                 val context = HeadsetStateCache.appContext()
@@ -132,7 +144,19 @@ object SonyRuntime {
         cardEnabled = prefs.getBoolean(KEY_CARD_ENABLED, true),
         islandRequest = controller.islandRequestSeq,
         error = controller.lastError,
+        audioHere = audioHere(controller),
     )
+
+    /** Current audio-here flag, seeding from the A2DP service before the first broadcast. */
+    private fun audioHere(controller: SonyHeadsetController): Boolean {
+        if (audioHereKnown) return audioHere
+        val device = controller.selectedDevice ?: return false
+        runCatching { audioHere = BtProfiles.a2dpConnected(device) }
+            .onFailure { HookLog.w(TAG, "a2dp probe failed: ${it.message}") }
+        audioHereKnown = true
+        HookLog.i(TAG, "audioHere seeded=$audioHere")
+        return audioHere
+    }
 
     private fun publishState(
         context: Context,
@@ -209,6 +233,27 @@ object SonyRuntime {
                         )
                         if (device != null) controller.onDeviceAclConnected(device)
                     }
+                    // The profile stack announces every A2DP/HFP transition; that is the
+                    // authoritative audio-here signal for the device center's 流转 switch.
+                    android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED,
+                    android.bluetooth.BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED,
+                    -> {
+                        val device = intent.getParcelableExtra(
+                            BluetoothDevice.EXTRA_DEVICE,
+                            BluetoothDevice::class.java,
+                        ) ?: return
+                        val target = controller.selectedDevice
+                        if (target == null || !device.address.equals(target.address, ignoreCase = true)) return
+                        val state = intent.getIntExtra(android.bluetooth.BluetoothProfile.EXTRA_STATE, -1)
+                        if (state == -1) return
+                        val now = state == android.bluetooth.BluetoothProfile.STATE_CONNECTED
+                        if (now != audioHere || !audioHereKnown) {
+                            audioHere = now
+                            audioHereKnown = true
+                            HookLog.i(TAG, "audioHere=$now (profile state $state)")
+                            ownerPrefs?.let { publishState(context, controller, controller.state, controller.lastError) }
+                        }
+                    }
                 }
             }
         }
@@ -216,6 +261,8 @@ object SonyRuntime {
         val filter = IntentFilter().apply {
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+            addAction(android.bluetooth.BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
         }
         runCatching {
             context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
@@ -277,6 +324,23 @@ object SonyRuntime {
                 controller.state,
                 runCatching { controller.selectedDevice?.name }.getOrNull(),
             )
+
+            // 耳机流转: connect or release the audio profiles. The XM5's multipoint firmware
+            // moves to / from its other host on its own once this phone lets go.
+            SonyBridge.ACTION_AUDIO_CONNECT,
+            SonyBridge.ACTION_AUDIO_DISCONNECT,
+            -> {
+                val device = controller.selectedDevice ?: run {
+                    HookLog.w(TAG, "audio handoff ignored: no device selected")
+                    return
+                }
+                val connect = action == SonyBridge.ACTION_AUDIO_CONNECT
+                BtProfiles.setConnected(device, connect)
+                // The profile broadcasts will flip audioHere and republish; nudge the guess
+                // immediately anyway so a quick UI read is not stale.
+                audioHere = connect
+                audioHereKnown = true
+            }
 
             SonyBridge.ACTION_SET_NOISE -> {
                 val name = intent.getStringExtra(SonyBridge.EXTRA_MODE)

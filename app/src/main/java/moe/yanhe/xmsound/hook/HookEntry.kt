@@ -49,10 +49,11 @@ class HookEntry : XposedModule() {
         HookLog.i(TAG, "package loaded: ${param.packageName}")
 
         // The session owner is independent of whatever probes this package installs, so it is
-        // started before the early return below.
+        // started before the early return below. The host classloader lets it reach the profile
+        // services for audio handoff (流转).
         if (param.packageName == SonyBridge.OWNER_PACKAGE) {
             HookLog.i(TAG, "starting the headset session owner in ${param.packageName}")
-            SonyRuntime.bootstrap()
+            SonyRuntime.bootstrap(param.defaultClassLoader)
         }
 
         val hooks = HookRegistry.hooksFor(param.packageName, PROBE_ENABLED)

@@ -30,6 +30,9 @@ object SonyStateBundle {
     const val KEY_ISLAND_REQUEST = "islandRequest"
     const val KEY_CARD_ENABLED = "cardEnabled"
 
+    /** Whether the headset's audio currently lives on this phone (A2DP connected here). */
+    const val KEY_AUDIO_HERE = "audioHere"
+
     /** Extra fields the module UI needs to render the details page. */
     const val KEY_FIRMWARE = "firmware"
     const val KEY_PROTOCOL_VERSION = "protocolVersion"
@@ -65,6 +68,7 @@ object SonyStateBundle {
         islandRequest: Int,
         error: String? = null,
         cardEnabled: Boolean = true,
+        audioHere: Boolean = false,
     ): Bundle = Bundle().apply {
         putString(KEY_PAYLOAD, MiuiHeadsetPayload.build(state))
         putString(KEY_ADDRESS, address)
@@ -92,6 +96,7 @@ object SonyStateBundle {
         putBoolean(KEY_ISLAND_ENABLED, islandEnabled)
         putInt(KEY_ISLAND_REQUEST, islandRequest)
         putBoolean(KEY_CARD_ENABLED, cardEnabled)
+        putBoolean(KEY_AUDIO_HERE, audioHere)
     }
 
     /** Rebuild the state from a bundle produced by [encode]. */
