@@ -21,11 +21,14 @@ class HookEntry : XposedModule() {
         private const val PREFS_NAME = "xmsound_settings"
 
         /**
-         * Enables the read-only [ClassProbe], which dumps the live Bluetooth-stack API surface into
-         * logcat. Useful after every ROM update, because HyperOS re-layers the AOSP stack between
-         * releases. Disable it once the hook targets for the running ROM are confirmed.
+         * Enables the read-only probes ([ClassProbe], [HyperAdapterProbe], [MiuiHeadsetBinderProbe]),
+         * which dump the live Bluetooth-stack API surface into logcat. Useful after every ROM
+         * update, because HyperOS re-layers the AOSP stack between releases - but they hook hot
+         * paths (e.g. every Binder transaction) and are pure overhead in daily use, so they stay
+         * off now that the hook targets for the running ROM are confirmed. Flip to true to survey a
+         * new ROM.
          */
-        const val PROBE_ENABLED = true
+        const val PROBE_ENABLED = false
     }
 
     /**

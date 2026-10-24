@@ -28,6 +28,14 @@ object HeadsetStateCache {
     @Volatile
     private var cached: Bundle? = null
 
+    /**
+     * Event hook for state arrivals, so watchers can react to changes instead of polling at an
+     * interval. Runs on the main thread of the hosting process (the receiver's thread); hand off
+     * anything slow.
+     */
+    @Volatile
+    var onState: ((Bundle) -> Unit)? = null
+
     /** The host application, resolved once. `ActivityThread.currentApplication()` is all we have. */
     @Volatile
     private var appContextCache: Context? = null
@@ -52,6 +60,7 @@ object HeadsetStateCache {
             override fun onReceive(receiverContext: Context?, intent: Intent?) {
                 val bundle = intent?.getBundleExtra(SonyBridge.EXTRA_STATE) ?: return
                 cached = bundle
+                runCatching { onState?.invoke(bundle) }
             }
         }
         runCatching {
@@ -64,6 +73,10 @@ object HeadsetStateCache {
         }.onFailure {
             HookLog.w("StateCache", "subscribe failed: ${it.message}")
         }
+
+        // Broadcasts are not sticky, so a process that (re)started after the session did would sit
+        // without state until the next change. Asking for a snapshot once closes that window.
+        requestRefresh()
     }
 
     /**

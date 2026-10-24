@@ -18,21 +18,21 @@ import moe.yanhe.xmsound.hook.settings.SettingsToastProbe
 object HookRegistry {
 
     fun hooksFor(packageName: String, probeEnabled: Boolean): List<HookContext> = buildList {
-        when (packageName) {
-            "com.android.bluetooth", "com.xiaomi.bluetooth", "com.milink.service" -> {
-                if (probeEnabled) add(ClassProbe())
+        // Reconnaissance hooks are read-only but instrument hot paths (every Binder transaction,
+        // every device-property callback), so they are only registered while surveying a ROM.
+        if (probeEnabled) {
+            when (packageName) {
+                "com.android.bluetooth" -> {
+                    add(ClassProbe())
+                    add(HyperAdapterProbe())
+                }
+                "com.xiaomi.bluetooth" -> add(MiuiHeadsetBinderProbe())
+                "com.milink.service" -> add(MiLinkHeadsetProbe())
             }
         }
         when (packageName) {
-            "com.android.bluetooth" -> add(HyperAdapterProbe())
-            "com.xiaomi.bluetooth" -> {
-                add(XiaomiHeadsetSpoofHook())
-                add(MiuiHeadsetBinderProbe())
-            }
-            "com.milink.service" -> {
-                add(MiLinkHeadsetSpoofHook())
-                if (probeEnabled) add(MiLinkHeadsetProbe())
-            }
+            "com.xiaomi.bluetooth" -> add(XiaomiHeadsetSpoofHook())
+            "com.milink.service" -> add(MiLinkHeadsetSpoofHook())
             "com.android.settings" -> add(SettingsToastProbe())
         }
     }

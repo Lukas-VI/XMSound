@@ -50,8 +50,13 @@ class SonyHeadsetController private constructor(private val context: Context) {
          * The headset drops the SPP link when it is idle, and any other control app (Sony Sound
          * Connect, HyperOS' Fusion Device Center) that grabs the single SPP client slot takes it
          * away from us. Reconnecting is therefore normal operation, not error handling.
+         *
+         * The ladder grows to five minutes: the adapter and ACL listeners in [moe.yanhe.xmsound.hook.runtime.SonyRuntime]
+         * reconnect the moment the headset is actually reachable again, so the long tail of the
+         * backoff no longer has to be short - it only has to keep the phone from hammering an
+         * absent headset (and vice versa) on battery.
          */
-        private val RECONNECT_DELAYS_MS = longArrayOf(2_000, 4_000, 8_000, 15_000, 30_000)
+        private val RECONNECT_DELAYS_MS = longArrayOf(2_000, 4_000, 8_000, 15_000, 30_000, 60_000, 120_000, 300_000)
 
         @Volatile
         private var instance: SonyHeadsetController? = null
@@ -84,6 +89,10 @@ class SonyHeadsetController private constructor(private val context: Context) {
     @Volatile
     private var userRequestedDisconnect = false
 
+    /** Set while the adapter is off; nothing can connect then, so the retry ladder stands down. */
+    @Volatile
+    private var adapterOff = false
+
     @Volatile
     private var reconnectAttempts = 0
 
@@ -101,7 +110,41 @@ class SonyHeadsetController private constructor(private val context: Context) {
     }
 
     private val reconnectRunnable = Runnable {
-        if (!userRequestedDisconnect && !isConnected && session == null) connect()
+        if (!userRequestedDisconnect && !adapterOff && !isConnected && session == null) connect()
+    }
+
+    /** Adapter came back (or went away): resume the retries immediately, or stand them down. */
+    fun onAdapterStateChanged(on: Boolean) {
+        adapterOff = !on
+        if (!on) {
+            mainHandler.removeCallbacks(reconnectRunnable)
+            return
+        }
+        reconnectAttempts = 0
+        if (!userRequestedDisconnect) connect()
+    }
+
+    /**
+     * The target's ACL link came up - the headset is actually reachable now (case opened, buds
+     * out), so skip the remaining backoff and connect at once.
+     */
+    @SuppressLint("MissingPermission")
+    fun onDeviceAclConnected(device: BluetoothDevice) {
+        val target = selectedDevice
+        if (target != null && device.address.equals(target.address, ignoreCase = true)) {
+            reconnectAttempts = 0
+            if (!userRequestedDisconnect && !isConnected && session == null) connect()
+            return
+        }
+        // No target resolved yet (bonded list may not have been ready at boot): a Sony-looking
+        // device appearing is the cue to try resolving again.
+        if (target == null) {
+            val name = runCatching { device.name }.getOrNull().orEmpty()
+            if (SONY_NAME_PREFIXES.any { name.startsWith(it, ignoreCase = true) }) {
+                reconnectAttempts = 0
+                if (!userRequestedDisconnect && !isConnected && session == null) connect()
+            }
+        }
     }
 
     val isConnected: Boolean get() = state.connected

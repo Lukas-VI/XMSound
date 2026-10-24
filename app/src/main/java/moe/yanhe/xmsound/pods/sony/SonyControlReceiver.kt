@@ -32,8 +32,8 @@ class SonyControlReceiver : BroadcastReceiver() {
         /** Ask the owner to raise the native popup; the owner holds the STATUS_BAR permission. */
         const val ACTION_SHOW_ISLAND = SonyBridge.ACTION_SHOW_ISLAND
 
-        /** Re-post the module's own notification card. Handled locally, not forwarded. */
-        const val ACTION_SHOW_CARD = "moe.yanhe.xmsound.action.SHOW_CARD"
+        /** Ask the owner to re-post the notification card. It owns the card, not this process. */
+        const val ACTION_SHOW_CARD = SonyBridge.ACTION_SHOW_CARD
 
         const val EXTRA_MODE = "mode"
         const val EXTRA_LEVEL = "level"
@@ -71,14 +71,7 @@ class SonyControlReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         Log.i(TAG, "control action=$action")
 
-        if (action == ACTION_SHOW_CARD) {
-            val controller = SonyRemoteController.get(context)
-            HeadsetNotificationCard.update(context, controller.state, controller.selectedDevice?.name)
-            Log.i(TAG, "card re-posted state=${controller.state}")
-            return
-        }
-
-        // Everything else belongs to the owner; forward it verbatim, remapping the card's short
+        // Everything belongs to the owner; forward it verbatim, remapping the card's short
         // mode names onto the enum names the owner understands.
         val forwarded = Intent(action).setPackage(SonyBridge.OWNER_PACKAGE)
         intent.extras?.let { forwarded.putExtras(it) }

@@ -79,7 +79,6 @@ class SonyRemoteController private constructor(private val context: Context) {
 
     init {
         registerReceiver()
-        startTrafficPump()
         requestState()
     }
 
@@ -113,7 +112,6 @@ class SonyRemoteController private constructor(private val context: Context) {
 
         val wasConnected = state.connected
         state = decoded
-        publishToSystem(decoded)
 
         post {
             if (wasConnected != decoded.connected) {
@@ -137,27 +135,17 @@ class SonyRemoteController private constructor(private val context: Context) {
         post { observers.forEach { it.onTraffic(TrafficLine('i', "log refreshed")) } }
     }
 
-    private fun publishToSystem(current: SonyHeadsetState) {
-        runCatching {
-            if (AppPrefs.notificationCardEnabled(context) && current.connected) {
-                HeadsetNotificationCard.update(context, current, deviceName)
-            } else {
-                HeadsetNotificationCard.cancel(context)
-            }
-        }.onFailure {
-            // A notification problem must never break the UI.
-        }
-    }
-
     // ------------------------------------------------------------ observers
 
     fun addObserver(observer: Observer) {
         observers.addIfAbsent(observer)
+        startTrafficPump()
         post { observer.onStateChanged(state) }
     }
 
     fun removeObserver(observer: Observer) {
         observers.remove(observer)
+        // The pump self-retires on its next tick once nobody is watching.
     }
 
     private fun post(block: () -> Unit) {
@@ -174,18 +162,29 @@ class SonyRemoteController private constructor(private val context: Context) {
 
     /**
      * Traffic is relayed on demand rather than pushed, so a module that is not open costs nothing.
-     * The dump is only requested while something is actually watching.
+     * The pump runs only while at least one observer is attached (in practice: while the UI is on
+     * screen) and retires itself when the last one leaves - the old version kept scheduling itself
+     * every second forever, which held a timer tick in the process for no reader.
      */
-    private fun startTrafficPump() {
-        mainHandler.postDelayed(object : Runnable {
-            override fun run() {
-                if (observers.isNotEmpty()) {
-                    // Only the details page renders the log; refresh it while it is on screen.
-                    send(SonyBridge.ACTION_REQUEST_TRAFFIC)
-                }
-                mainHandler.postDelayed(this, TRAFFIC_POLL_MS)
+    @Volatile
+    private var pumpRunning = false
+
+    private val trafficPump = object : Runnable {
+        override fun run() {
+            if (observers.isEmpty()) {
+                pumpRunning = false
+                return
             }
-        }, TRAFFIC_POLL_MS)
+            // Only the details page renders the log; refresh it while it is on screen.
+            send(SonyBridge.ACTION_REQUEST_TRAFFIC)
+            mainHandler.postDelayed(this, TRAFFIC_POLL_MS)
+        }
+    }
+
+    private fun startTrafficPump() {
+        if (pumpRunning) return
+        pumpRunning = true
+        mainHandler.post(trafficPump)
     }
 
     // ------------------------------------------------------------ commands out
@@ -221,10 +220,11 @@ class SonyRemoteController private constructor(private val context: Context) {
 
     fun cycleNoiseMode() = send(SonyBridge.ACTION_CYCLE_NOISE)
 
-    /** Tell the owner about the module's notification preferences. */
+    /** Tell the owner about the module's notification preferences (island + card). */
     fun applySettings() =
         send(SonyBridge.ACTION_APPLY_SETTINGS) {
             it.putExtra(SonyBridge.EXTRA_ISLAND_ENABLED, AppPrefs.islandEnabled(context))
+            it.putExtra(SonyBridge.EXTRA_CARD_ENABLED, AppPrefs.notificationCardEnabled(context))
         }
 
     @SuppressLint("MissingPermission")

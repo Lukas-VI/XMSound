@@ -23,59 +23,84 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import moe.yanhe.xmsound.R
 import moe.yanhe.xmsound.hook.HookModuleInfo
 
 @Composable
-fun SettingsPage(modifier: Modifier = Modifier) {
+fun SettingsPage(ui: HeadsetUiState, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var autoConnect by remember { mutableStateOf(AppPrefs.autoConnect(context)) }
     var island by remember { mutableStateOf(AppPrefs.islandEnabled(context)) }
     var card by remember { mutableStateOf(AppPrefs.notificationCardEnabled(context)) }
 
+    // Island and card live in the owner process, so every change has to be pushed there - the
+    // owner cannot read the module's preferences. This call was missing entirely, so toggles only
+    // ever took effect after a fresh APPLY_SETTINGS broadcast happened to arrive.
+    fun pushToOwner() {
+        ui.controllerRef.applySettings()
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(PaddingValues(horizontal = 16.dp, vertical = 12.dp)),
+            .padding(PaddingValues(horizontal = 16.dp, vertical = 4.dp)),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                SwitchRow(
-                    title = stringResource(R.string.auto_connect),
-                    summary = stringResource(R.string.auto_connect_summary),
-                    checked = autoConnect,
-                    onCheckedChange = {
-                        autoConnect = it
-                        AppPrefs.setAutoConnect(context, it)
-                    },
-                )
-                HorizontalDivider()
-                SwitchRow(
-                    title = stringResource(R.string.notif_island),
-                    summary = stringResource(R.string.notif_island_summary),
-                    checked = island,
-                    onCheckedChange = {
-                        island = it
-                        AppPrefs.setIslandEnabled(context, it)
-                    },
-                )
-                HorizontalDivider()
-                SwitchRow(
-                    title = stringResource(R.string.notif_card),
-                    summary = stringResource(R.string.notif_card_summary),
-                    checked = card,
-                    onCheckedChange = {
-                        card = it
-                        AppPrefs.setNotificationCardEnabled(context, it)
-                    },
-                )
-            }
+        SectionCard(title = stringResource(R.string.section_notifications)) {
+            SwitchRow(
+                title = stringResource(R.string.notif_island),
+                summary = stringResource(R.string.notif_island_summary),
+                checked = island,
+                onCheckedChange = {
+                    island = it
+                    AppPrefs.setIslandEnabled(context, it)
+                    pushToOwner()
+                },
+            )
+            HorizontalDivider()
+            SwitchRow(
+                title = stringResource(R.string.notif_card),
+                summary = stringResource(R.string.notif_card_summary),
+                checked = card,
+                onCheckedChange = {
+                    card = it
+                    AppPrefs.setNotificationCardEnabled(context, it)
+                    pushToOwner()
+                },
+            )
+        }
+
+        SectionCard(title = stringResource(R.string.section_connection)) {
+            SwitchRow(
+                title = stringResource(R.string.auto_connect),
+                summary = stringResource(R.string.auto_connect_summary),
+                checked = autoConnect,
+                onCheckedChange = {
+                    autoConnect = it
+                    AppPrefs.setAutoConnect(context, it)
+                },
+            )
         }
 
         ModuleStatusCard()
+    }
+}
+
+@Composable
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+            content()
+        }
     }
 }
 
@@ -109,6 +134,7 @@ private fun ModuleStatusCard() {
             Text(
                 text = stringResource(R.string.module),
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = stringResource(R.string.module_scope_summary),

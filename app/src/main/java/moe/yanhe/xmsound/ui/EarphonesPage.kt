@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -12,29 +13,34 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import moe.yanhe.xmsound.R
 import moe.yanhe.xmsound.pods.sony.SonyBatteryState
@@ -50,9 +56,9 @@ fun EarphonesPage(ui: HeadsetUiState, modifier: Modifier = Modifier) {
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
+        contentPadding = PaddingValues(vertical = 4.dp),
     ) {
-        item { StatusCard(ui) }
+        item { HeroCard(ui) }
         if (ui.connected) {
             item { BatteryCard(state.battery) }
             item { NoiseControlCard(state, ui) }
@@ -62,48 +68,69 @@ fun EarphonesPage(ui: HeadsetUiState, modifier: Modifier = Modifier) {
     }
 }
 
-// ------------------------------------------------------------------ status
+// ------------------------------------------------------------------ hero
 
+/**
+ * One card for "what am I talking to": device name, connection state, protocol/firmware facts and
+ * the primary action - instead of a status list plus a separate battery card plus a picker.
+ */
 @Composable
-private fun StatusCard(ui: HeadsetUiState) {
+private fun HeroCard(ui: HeadsetUiState) {
     val state = ui.headset
+    val device = ui.controllerRef.selectedDevice
+    val deviceName = device?.let { runCatching { it.name }.getOrNull() }
+        ?: stringResource(R.string.unknown_device)
+
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .width(10.dp)
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(
-                            if (ui.connected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outline,
-                        ),
+                Icon(
+                    painter = painterResource(R.drawable.ic_nav_headset),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp),
                 )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(
-                        if (ui.connected) R.string.conn_connected else R.string.conn_disconnected,
-                    ),
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = deviceName,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (ui.connected) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outline,
+                                ),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(
+                                if (ui.connected) R.string.conn_connected else R.string.conn_disconnected,
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
-            val device = ui.controllerRef.selectedDevice
-            InfoRow(
-                stringResource(R.string.label_device),
-                device?.let { "${it.name ?: stringResource(R.string.unknown_device)}  ${it.address}" }
-                    ?: stringResource(R.string.unknown_device),
-            )
-            InfoRow(
-                stringResource(R.string.label_protocol),
-                when (state.protocolVersion) {
-                    2 -> stringResource(R.string.protocol_v2)
-                    1 -> stringResource(R.string.protocol_v1)
-                    else -> stringResource(R.string.protocol_unknown)
-                },
-            )
-            state.firmware?.let { InfoRow(stringResource(R.string.label_firmware), it) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetaChip(
+                    stringResource(R.string.label_protocol) + " " + when (state.protocolVersion) {
+                        2 -> stringResource(R.string.protocol_v2)
+                        1 -> stringResource(R.string.protocol_v1)
+                        else -> stringResource(R.string.protocol_unknown)
+                    },
+                )
+                state.firmware?.let {
+                    MetaChip(stringResource(R.string.label_firmware) + " " + it)
+                }
+            }
 
             ui.error?.let {
                 Text(
@@ -132,15 +159,17 @@ private fun StatusCard(ui: HeadsetUiState) {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
-    Row {
+private fun MetaChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
         Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(84.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
-        Text(text = value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -152,10 +181,11 @@ private fun DevicePickerCard(ui: HeadsetUiState) {
     val devices = remember(ui.connected) { controller.candidateDevices() }
 
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = stringResource(R.string.select_device),
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             if (devices.isEmpty()) {
                 Text(
@@ -183,7 +213,7 @@ private fun DevicePickerCard(ui: HeadsetUiState) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Button(onClick = {
+                    FilledTonalButton(onClick = {
                         controller.selectDevice(device)
                         controller.connect()
                     }) {
@@ -197,42 +227,53 @@ private fun DevicePickerCard(ui: HeadsetUiState) {
 
 // ------------------------------------------------------------------ battery
 
+/** The three parts side by side - the shape every first-party earbud UI uses. */
 @Composable
 private fun BatteryCard(battery: SonyBatteryState) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
                 text = stringResource(R.string.battery_title),
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
-            BatteryRow(stringResource(R.string.batt_left_pod), battery.left)
-            BatteryRow(stringResource(R.string.batt_right_pod), battery.right)
-            BatteryRow(stringResource(R.string.pod_case), battery.case)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                BatteryCell(stringResource(R.string.batt_left_pod), battery.left, Modifier.weight(1f))
+                BatteryCell(stringResource(R.string.batt_right_pod), battery.right, Modifier.weight(1f))
+                BatteryCell(stringResource(R.string.pod_case), battery.case, Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
-private fun BatteryRow(label: String, battery: SonyBudBattery?) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(64.dp))
-            Text(
-                text = battery?.let { stringResource(R.string.percent_format, it.level) }
-                    ?: stringResource(R.string.battery_unknown),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-            )
-            if (battery?.charging == true) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.battery_charging),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
-            }
-        }
+private fun BatteryCell(label: String, battery: SonyBudBattery?, modifier: Modifier = Modifier) {
+    Column(
+        modifier.padding(vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = battery?.let { stringResource(R.string.percent_format, it.level) }
+                ?: stringResource(R.string.battery_unknown),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
         BatteryBar(battery)
+        if (battery?.charging == true) {
+            Text(
+                text = stringResource(R.string.battery_charging),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+        } else {
+            Spacer(Modifier.height(14.dp))
+        }
     }
 }
 
@@ -247,8 +288,8 @@ private fun BatteryBar(battery: SonyBudBattery?) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(8.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
             .background(track),
     ) {
         val fraction = (battery?.level ?: 0).coerceIn(0, 100) / 100f
@@ -257,7 +298,7 @@ private fun BatteryBar(battery: SonyBudBattery?) {
                 Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(fraction)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(3.dp))
                     .background(fill),
             )
         }
@@ -272,28 +313,29 @@ private fun NoiseControlCard(state: SonyHeadsetState, ui: HeadsetUiState) {
     val noise = state.noise
 
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
                 text = stringResource(R.string.noise_control_title),
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModeChip(
-                    label = stringResource(R.string.noise_control_off),
-                    selected = noise.mode == SonyNoiseMode.OFF,
-                ) { controller.setNoiseMode(SonyNoiseMode.OFF) }
+            NoiseSegmented(
+                selected = noise.mode,
+                onSelect = { controller.setNoiseMode(it) },
+            )
 
-                ModeChip(
-                    label = stringResource(R.string.noise_control_nc),
-                    selected = noise.mode == SonyNoiseMode.NOISE_CANCELLING,
-                ) { controller.setNoiseMode(SonyNoiseMode.NOISE_CANCELLING) }
-
-                ModeChip(
-                    label = stringResource(R.string.noise_control_ambient),
-                    selected = noise.mode == SonyNoiseMode.AMBIENT_SOUND,
-                ) { controller.setNoiseMode(SonyNoiseMode.AMBIENT_SOUND) }
-            }
+            Text(
+                text = stringResource(
+                    when (noise.mode) {
+                        SonyNoiseMode.NOISE_CANCELLING -> R.string.nc_nc_summary
+                        SonyNoiseMode.AMBIENT_SOUND -> R.string.nc_ambient_summary
+                        else -> R.string.nc_off_summary
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             if (noise.mode == SonyNoiseMode.AMBIENT_SOUND) {
                 AmbientLevelSlider(noise.ambientLevel, onCommit = { controller.setAmbientLevel(it) })
@@ -313,9 +355,63 @@ private fun NoiseControlCard(state: SonyHeadsetState, ui: HeadsetUiState) {
     }
 }
 
+private class NoiseOption(
+    val mode: SonyNoiseMode,
+    val labelRes: Int,
+    val iconRes: Int,
+)
+
+/** One control that looks like the system's own: a filled segment per mode, icons above labels. */
 @Composable
-private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+private fun NoiseSegmented(selected: SonyNoiseMode, onSelect: (SonyNoiseMode) -> Unit) {
+    val options = listOf(
+        NoiseOption(SonyNoiseMode.OFF, R.string.noise_control_off, R.drawable.ic_anc_off),
+        NoiseOption(SonyNoiseMode.NOISE_CANCELLING, R.string.noise_control_nc, R.drawable.ic_anc_nc),
+        NoiseOption(SonyNoiseMode.AMBIENT_SOUND, R.string.noise_control_ambient, R.drawable.ic_anc_ambient),
+    )
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(
+            Modifier.padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            options.forEach { option ->
+                val isSelected = selected == option.mode
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSelect(option.mode) },
+                ) {
+                    Column(
+                        Modifier.padding(vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(option.iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = stringResource(option.labelRes),
+                            style = MaterialTheme.typography.labelMedium,
+                            textAlign = TextAlign.Center,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**

@@ -28,6 +28,10 @@
     <string name="module">Module</string>
     <string name="module_scope_summary">Enable XMSound in LSPosed, tick these scopes, then restart them.</string>
 
+    <!-- Sections -->
+    <string name="section_notifications">Notifications</string>
+    <string name="section_connection">Connection</string>
+
     <!-- Notifications -->
     <string name="notif_channel_headset">Headset status</string>
     <string name="notif_island">Battery island</string>

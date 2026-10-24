@@ -57,8 +57,35 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
     @Volatile
     private var pushHandler: android.os.Handler? = null
 
+    /**
+     * Serialises status pushes and island popups off the main thread. State arrives as broadcasts
+     * (on the main thread); pushing status into client binders and raising the island are binder
+     * round trips that must not block this process's UI thread.
+     */
+    private val pushExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "xmsound-headset-push").apply { isDaemon = true }
+    }
+
+    /** What the last handled state showed; used to act on changes only. */
+    @Volatile
+    private var lastPayload: String? = null
+
+    @Volatile
+    private var lastPresence: String? = null
+
+    @Volatile
+    private var lastIslandRequest = -1
+
     override fun onHook() {
-        appContext()?.let { HeadsetStateCache.start(it) }
+        appContext()?.let { context ->
+            HeadsetStateCache.start(context)
+            // Event-driven, not polled: the previous design ran a thread that woke every second
+            // around the clock in this system process just to diff the state. Broadcasts only
+            // arrive when something actually changed, so this costs nothing while idle.
+            HeadsetStateCache.onState = { bundle ->
+                pushExecutor.execute { onStateChanged(bundle) }
+            }
+        }
         install("BluetoothHeadsetService#onCreate") {
             val method = findMethodAnywhere(SERVICE, "onCreate")
             hookAfter(method) {
@@ -85,19 +112,9 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
         val className = binderClass.name
         if (!hookedBinderClasses.add(className)) return
 
-        HookLog.i(tag, "binder class $className descriptor=${runCatching { binderClass.name }.getOrNull()}")
+        HookLog.i(tag, "binder class $className")
 
         pushHandler = android.os.Handler(android.os.Looper.getMainLooper())
-
-        // What is actually offered: if these names survive obfuscation we can hook them directly.
-        binderClass.declaredMethods
-            .map { it.name }
-            .filter { it.length > 2 && !it.startsWith("access\$") && !it.contains("\$\$Nest\$") }
-            .sorted()
-            .chunked(8)
-            .forEach { HookLog.i(tag, "  methods: ${it.joinToString(" ")}") }
-
-        dumpMiuiAncConstants()
 
         hookStringDeviceResult(binderClass, "checkSupport") { FAKE_SUPPORT }
         hookAddressStringResult(binderClass, "getDeviceInfo") { FAKE_SUPPORT }
@@ -109,51 +126,31 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
         hookAncMode(binderClass)
         hookAncLevel(binderClass)
         hookCallbackRegistration(binderClass)
-        startStateWatcher()
     }
 
     /**
-     * Push the status whenever it changes, rather than only in response to a call.
-     *
-     * HyperOS does not re-read the headset on its own, so a change made anywhere - the module UI,
-     * the Fusion Device Center, or the earbuds' own buttons - would otherwise leave every open page
-     * showing stale values.
+     * Handle one state broadcast: push the status to registered clients when the payload changed,
+     * and raise the native popup when a bud appears or disappears, or when something explicitly
+     * asks for it.
      */
-    private fun startStateWatcher() {
-        Thread({
-            var lastPayload: String? = null
-            var lastPresence: String? = null
-            var lastIslandRequest = -1
-            while (true) {
-                runCatching {
-                    // In the owning process this reads the live controller; elsewhere it is whatever
-                    // the last state broadcast carried. Ask for a snapshot until one arrives.
-                    val bundle = HeadsetStateCache.get()
-                    if (bundle == null) {
-                        HeadsetStateCache.requestRefresh()
-                        return@runCatching
-                    }
-                    val payload = bundle.getString(KEY_PAYLOAD)
-                    val islandRequest = bundle.getInt(KEY_ISLAND_REQUEST, 0)
-                    val explicitRequest = lastIslandRequest >= 0 && islandRequest != lastIslandRequest
-                    lastIslandRequest = islandRequest
+    private fun onStateChanged(bundle: android.os.Bundle) {
+        runCatching {
+            val payload = bundle.getString(KEY_PAYLOAD)
+            val islandRequest = bundle.getInt(KEY_ISLAND_REQUEST, 0)
+            val explicitRequest = lastIslandRequest >= 0 && islandRequest != lastIslandRequest
+            lastIslandRequest = islandRequest
 
-                    if (payload != null && payload != lastPayload) {
-                        lastPayload = payload
-                        if (callbacks.isNotEmpty()) pushStatus(null)
-                    }
-
-                    // The popup is an announcement, not a readout: raise it when a bud appears or
-                    // disappears, plus whenever something explicitly asks for it.
-                    val presence = presenceOf(bundle)
-                    if (presence != lastPresence || explicitRequest) {
-                        lastPresence = presence
-                        if (bundle.getBoolean(KEY_ISLAND_ENABLED, false)) showStrongToast(bundle)
-                    }
-                }
-                runCatching { Thread.sleep(STATE_WATCH_MS) }
+            if (payload != null && payload != lastPayload) {
+                lastPayload = payload
+                if (callbacks.isNotEmpty()) pushStatus(null)
             }
-        }, "xmsound-headset-watch").apply { isDaemon = true }.start()
+
+            val presence = presenceOf(bundle)
+            if (presence != lastPresence || explicitRequest) {
+                lastPresence = presence
+                if (bundle.getBoolean(KEY_ISLAND_ENABLED, false)) showStrongToast(bundle)
+            }
+        }
     }
 
     private fun presenceOf(bundle: android.os.Bundle): String =
@@ -262,9 +259,9 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
     }
 
     /**
-     * Ask our own process for the current state and hand it to every registered callback.
+     * Hand the cached state to every registered client callback.
      *
-     * The heavyweight part (the SPP session) lives in the module's process; here we only relay.
+     * The SPP session lives in the owner process; here we only relay the latest snapshot.
      */
     private fun pushStatus(address: String?) {
         val target = address ?: targetAddresses.firstOrNull() ?: return
@@ -288,25 +285,6 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
                         callbacks.remove(callback)
                     }
             }
-        }
-    }
-
-    /** Enum-ish int constants MiLink uses for ANC; needed to translate changeAncMode's argument. */
-    private fun dumpMiuiAncConstants() {
-        listOf(ANC_MODE, ANC_STATE).forEach { name ->
-            val cls = findClassOrNull(name) ?: run {
-                HookLog.w(tag, "MISSING $name")
-                return@forEach
-            }
-            cls.declaredFields
-                .filter { java.lang.reflect.Modifier.isStatic(it.modifiers) && it.type == Int::class.javaPrimitiveType }
-                .sortedBy { it.name }
-                .forEach { f ->
-                    runCatching {
-                        f.isAccessible = true
-                        HookLog.i(tag, "CONST ${cls.simpleName}.${f.name} = ${f.getInt(null)}")
-                    }
-                }
         }
     }
 
@@ -490,12 +468,6 @@ class XiaomiHeadsetSpoofHook : SafeHookContext() {
 
         /** Grace period for the SPP session to apply a command before the UI is refreshed. */
         const val PUSH_AFTER_COMMAND_MS = 900L
-
-        /** How often the status watcher looks for a change worth pushing to the UI. */
-        const val STATE_WATCH_MS = 1_000L
-
-        const val ANC_MODE = "com.miui.headset.api.AncMode"
-        const val ANC_STATE = "com.miui.headset.api.AncState"
 
         /** Values observed in `com.miui.headset.api.AncMode`; only used for forwarding. */
         const val ANC_MODE_OFF = 0

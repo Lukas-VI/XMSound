@@ -58,9 +58,6 @@ class SonyHeadsetSession(
 
         private const val REFRESH_INTERVAL_MS = 30_000L
 
-        /** How long the worker parks before re-checking the queue and the refresh deadline. */
-        private const val WORKER_POLL_MS = 500L
-
         /** Settle time after a fire-and-forget SET, so the next request is still serialised. */
         private const val SET_SETTLE_MS = 120L
 
@@ -97,6 +94,19 @@ class SonyHeadsetSession(
 
     private val running = AtomicBoolean(false)
     private val commands = LinkedBlockingQueue<Command>()
+
+    /**
+     * Drives the periodic refresh while the session is up. The worker itself parks on the queue
+     * indefinitely, so an idle session costs zero wakeups: the 500ms poll this replaces woke the
+     * Bluetooth process's worker thread twice a second around the clock.
+     */
+    private val refreshHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val refreshRunnable = Runnable {
+        if (running.get()) {
+            refreshPeriodic()
+            scheduleRefresh()
+        }
+    }
 
     private val responseLock = ReentrantLock()
     private val responseSignal = responseLock.newCondition()
@@ -163,6 +173,7 @@ class SonyHeadsetSession(
 
     fun disconnect() {
         if (!running.compareAndSet(true, false)) return
+        refreshHandler.removeCallbacks(refreshRunnable)
         runCatching { socket?.close() }
         worker?.interrupt()
         reader?.interrupt()
@@ -173,6 +184,7 @@ class SonyHeadsetSession(
         notifyConnection(false, null)
     }
 
+    /** Full re-read: battery, ambient state and firmware. Used on connect and on explicit refresh. */
     fun refresh() {
         batteryProbes().forEach { enqueue(it) }
         enqueue(ambientCommand())
@@ -183,6 +195,20 @@ class SonyHeadsetSession(
                 setOf(SonyProtocol.PT_FIRMWARE_RET),
             ),
         )
+    }
+
+    /**
+     * The periodic poll the handler schedules. Firmware never changes over a connection, so it is
+     * read once at handshake instead of every 30 seconds - one frame less per cycle on a link whose
+     * only job between user commands is keeping the numbers current.
+     */
+    private fun refreshPeriodic() {
+        batteryProbes().forEach { enqueue(it) }
+        enqueue(ambientCommand())
+    }
+
+    private fun scheduleRefresh() {
+        refreshHandler.postDelayed(refreshRunnable, REFRESH_INTERVAL_MS)
     }
 
     /**
@@ -303,30 +329,23 @@ class SonyHeadsetSession(
 
             notifyConnection(true, null)
             refresh()
+            scheduleRefresh()
 
-            var lastRefresh = System.currentTimeMillis()
             while (running.get()) {
                 val command = try {
-                    // Short poll so a freshly enqueued command is picked up promptly and the
-                    // periodic refresh deadline is still honoured.
-                    commands.poll(WORKER_POLL_MS, TimeUnit.MILLISECONDS)
+                    // Park until there is work: enqueues wake the queue on their own, and the
+                    // periodic refresh arrives as an enqueue from the handler.
+                    commands.take()
                 } catch (_: InterruptedException) {
-                    null
+                    break
                 }
-
-                if (command != null) {
-                    execute(command)
-                }
-
-                if (System.currentTimeMillis() - lastRefresh >= REFRESH_INTERVAL_MS) {
-                    lastRefresh = System.currentTimeMillis()
-                    refresh()
-                }
+                execute(command)
             }
         } catch (t: Throwable) {
             if (running.get()) notifyConnection(false, t.message ?: t.javaClass.simpleName)
         } finally {
             running.set(false)
+            refreshHandler.removeCallbacks(refreshRunnable)
             runCatching { socket?.close() }
             publish(state.copy(connected = false))
         }
@@ -552,7 +571,8 @@ class SonyHeadsetSession(
 
     private fun publish(newState: SonyHeadsetState) {
         state = newState
-        traffic('s', "state $newState")
+        // No traffic line for this: the TX/RX frames already show what changed, and a line per
+        // parsed frame flooded the log and the ring buffer on every 30s refresh cycle.
         listener.onStateChanged(newState)
     }
 

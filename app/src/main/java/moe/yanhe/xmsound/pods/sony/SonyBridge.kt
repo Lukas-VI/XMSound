@@ -53,6 +53,7 @@ object SonyBridge {
     const val ACTION_SET_AMBIENT_LEVEL = "${PREFIX}SET_AMBIENT_LEVEL"
     const val ACTION_SET_FOCUS_ON_VOICE = "${PREFIX}SET_FOCUS_ON_VOICE"
     const val ACTION_SHOW_ISLAND = "${PREFIX}SHOW_ISLAND"
+    const val ACTION_SHOW_CARD = "${PREFIX}SHOW_CARD"
     const val ACTION_APPLY_SETTINGS = "${PREFIX}APPLY_SETTINGS"
     const val ACTION_REQUEST_STATE = "${PREFIX}REQUEST_STATE"
     const val ACTION_REQUEST_TRAFFIC = "${PREFIX}REQUEST_TRAFFIC"
@@ -62,6 +63,7 @@ object SonyBridge {
     const val EXTRA_ENABLED = "enabled"
     const val EXTRA_ADDRESS = "address"
     const val EXTRA_ISLAND_ENABLED = "islandEnabled"
+    const val EXTRA_CARD_ENABLED = "cardEnabled"
 
     /**
      * Accept both the enum names and the short names the notification card and the hooks use.
@@ -81,7 +83,8 @@ object SonyBridge {
     }
 
     /** Every command the owner listens for; used to build the receiver's intent filter. */
-    val COMMAND_ACTIONS = listOf(        ACTION_CONNECT,
+    val COMMAND_ACTIONS = listOf(
+        ACTION_CONNECT,
         ACTION_DISCONNECT,
         ACTION_RECONNECT,
         ACTION_REFRESH,
@@ -90,6 +93,7 @@ object SonyBridge {
         ACTION_SET_AMBIENT_LEVEL,
         ACTION_SET_FOCUS_ON_VOICE,
         ACTION_SHOW_ISLAND,
+        ACTION_SHOW_CARD,
         ACTION_APPLY_SETTINGS,
         ACTION_REQUEST_STATE,
         ACTION_REQUEST_TRAFFIC,

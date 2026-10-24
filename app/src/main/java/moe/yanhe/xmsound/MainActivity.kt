@@ -74,7 +74,13 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(granted) {
-                    if (granted && AppPrefs.autoConnect(context)) controller.connect()
+                    if (granted) {
+                        // Bring the owner's mirrored preferences (island / card) up to date, then
+                        // connect if the user wants that. The owner keeps working without this, but
+                        // its settings stay whatever the last push carried.
+                        controller.applySettings()
+                        if (AppPrefs.autoConnect(context)) controller.connect()
+                    }
                 }
 
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
